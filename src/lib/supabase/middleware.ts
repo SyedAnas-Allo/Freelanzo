@@ -87,6 +87,24 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  // Keep home segments aligned with persisted mode so soft nav cannot show
+  // a business page under a freelancer shell (or the reverse).
+  if (roleReady) {
+    const isBusiness = profile?.active_mode === "business";
+    const onBusiness = path === "/business" || path.startsWith("/business/");
+    const onFreelancer =
+      path === "/freelancer" || path.startsWith("/freelancer/");
+
+    if (onBusiness && !isBusiness) {
+      url.pathname = "/freelancer";
+      return NextResponse.redirect(url);
+    }
+    if (onFreelancer && isBusiness) {
+      url.pathname = "/business";
+      return NextResponse.redirect(url);
+    }
+  }
+
   // Must pick a role after login before using the app.
   if (
     !roleReady &&

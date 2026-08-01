@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { clearRoleReadyCookie } from "@/lib/role-session";
 import { createClient } from "@/lib/supabase/client";
 
 /**
@@ -32,6 +33,7 @@ export default function NativeAuthPage() {
           setError(exchangeError.message);
           return;
         }
+        clearRoleReadyCookie();
         router.replace("/continue");
         return;
       }
@@ -46,6 +48,7 @@ export default function NativeAuthPage() {
           setError(sessionError.message);
           return;
         }
+        clearRoleReadyCookie();
         router.replace("/continue");
         return;
       }

@@ -16,6 +16,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "co.id.freelanzo.app",
+      "icon": "./assets/icon.png",
       "infoPlist": {
         "NSCameraUsageDescription": "Freelanzo needs camera access to take check-in and check-out attendance photos so businesses can verify you were on site.",
         "NSMicrophoneUsageDescription": "Freelanzo may use the microphone when the camera is open for attendance photos.",

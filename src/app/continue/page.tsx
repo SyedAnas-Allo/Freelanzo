@@ -32,10 +32,13 @@ export default function ContinuePage() {
       return;
     }
 
-    const { error } = await supabase
+    // PostgREST returns no error when 0 rows match — require a returned row.
+    const { data: updated, error } = await supabase
       .from("profiles")
       .update({ active_mode: mode })
-      .eq("id", user.id);
+      .eq("id", user.id)
+      .select("active_mode")
+      .maybeSingle();
 
     if (error) {
       setPicking(null);
@@ -43,9 +46,42 @@ export default function ContinuePage() {
       return;
     }
 
+    if (!updated || updated.active_mode !== mode) {
+      const meta = user.user_metadata ?? {};
+      const fullName =
+        (typeof meta.full_name === "string" ? meta.full_name : null) ??
+        (typeof meta.name === "string" ? meta.name : null);
+      const photoUrl =
+        typeof meta.avatar_url === "string" ? meta.avatar_url : null;
+
+      const { data: created, error: createError } = await supabase
+        .from("profiles")
+        .upsert(
+          {
+            id: user.id,
+            email: user.email ?? null,
+            full_name: fullName,
+            photo_url: photoUrl,
+            active_mode: mode,
+          },
+          { onConflict: "id" },
+        )
+        .select("active_mode")
+        .maybeSingle();
+
+      if (createError || created?.active_mode !== mode) {
+        setPicking(null);
+        toast.error(
+          createError?.message ?? "Could not save your choice. Try again.",
+        );
+        return;
+      }
+    }
+
     setRoleReadyCookie();
-    router.refresh();
-    router.push(mode === "business" ? "/business" : "/freelancer");
+    // Hard navigate so (app) layout mounts with the saved mode. Soft push after
+    // a refresh can preserve a freelancer shell while landing on /business.
+    window.location.assign(mode === "business" ? "/business" : "/freelancer");
   }
 
   return (
