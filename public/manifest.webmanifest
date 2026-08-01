@@ -1,0 +1,17 @@
+{
+  "name": "Freelanzo",
+  "short_name": "Freelanzo",
+  "description": "Blue-collar part-time gigs near you",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F8F5FF",
+  "theme_color": "#5E2CED",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "811x717",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
