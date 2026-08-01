@@ -1,36 +1,87 @@
+"use client";
+
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { useRouter } from "@/hooks/use-app-router";
 import { Star } from "lucide-react";
 import { PageBack } from "@/components/page-back";
+import { PageLoading } from "@/components/page-loading";
 import { ReviewListItem, StarRow } from "@/components/review-list-item";
 import { Badge } from "@/components/ui/badge";
-import { getSessionProfile } from "@/lib/auth";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/client";
 import type { Profile, Rating } from "@/types/database";
 
-export default async function ReviewsPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ tab?: string }>;
-}) {
-  const { tab = "received" } = await searchParams;
-  const { user } = await getSessionProfile();
-  if (!user) return null;
-  const supabase = await createClient();
+export default function ReviewsPage() {
+  return (
+    <Suspense fallback={<PageLoading />}>
+      <ReviewsPageInner />
+    </Suspense>
+  );
+}
 
-  const { data: received } = await supabase
-    .from("ratings")
-    .select("*")
-    .eq("to_user_id", user.id)
-    .order("created_at", { ascending: false });
+function ReviewsPageInner() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const tab = searchParams.get("tab") ?? "received";
 
-  const { data: given } = await supabase
-    .from("ratings")
-    .select("*")
-    .eq("from_user_id", user.id)
-    .order("created_at", { ascending: false });
+  const [loading, setLoading] = useState(true);
+  const [userId, setUserId] = useState<string>("");
+  const [receivedList, setReceivedList] = useState<Rating[]>([]);
+  const [givenList, setGivenList] = useState<Rating[]>([]);
+  const [profileMap, setProfileMap] = useState<Map<string, Profile>>(
+    () => new Map(),
+  );
 
-  const receivedList = (received ?? []) as Rating[];
-  const givenList = (given ?? []) as Rating[];
+  useEffect(() => {
+    async function load() {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        router.push("/login");
+        return;
+      }
+      setUserId(user.id);
+
+      const [{ data: received }, { data: given }] = await Promise.all([
+        supabase
+          .from("ratings")
+          .select("*")
+          .eq("to_user_id", user.id)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("ratings")
+          .select("*")
+          .eq("from_user_id", user.id)
+          .order("created_at", { ascending: false }),
+      ]);
+
+      const receivedRows = (received ?? []) as Rating[];
+      const givenRows = (given ?? []) as Rating[];
+      setReceivedList(receivedRows);
+      setGivenList(givenRows);
+
+      const list = tab === "given" ? givenRows : receivedRows;
+      const counterpartIds = [
+        ...new Set(
+          list.map((r) => (tab === "given" ? r.to_user_id : r.from_user_id)),
+        ),
+      ];
+      const { data: profiles } = counterpartIds.length
+        ? await supabase.from("profiles").select("*").in("id", counterpartIds)
+        : { data: [] };
+      setProfileMap(
+        new Map(((profiles ?? []) as Profile[]).map((p) => [p.id, p])),
+      );
+      setLoading(false);
+    }
+    void load();
+  }, [router, tab]);
+
+  if (loading) return <PageLoading />;
+
   const list = tab === "given" ? givenList : receivedList;
 
   const avg =
@@ -47,18 +98,6 @@ export default async function ReviewsPage({
   }));
   const maxBucket = Math.max(1, ...buckets.map((b) => b.count));
 
-  const counterpartIds = [
-    ...new Set(
-      list.map((r) => (tab === "given" ? r.to_user_id : r.from_user_id)),
-    ),
-  ];
-  const { data: profiles } = counterpartIds.length
-    ? await supabase.from("profiles").select("*").in("id", counterpartIds)
-    : { data: [] };
-  const profileMap = new Map(
-    ((profiles ?? []) as Profile[]).map((p) => [p.id, p]),
-  );
-
   return (
     <div className="px-4 py-4 pb-8">
       <PageBack href="/profile" />
@@ -67,7 +106,7 @@ export default async function ReviewsPage({
           Ratings & Reviews
         </h1>
         <Link
-          href={`/reviews/${user.id}`}
+          href={`/reviews/${userId}`}
           className="shrink-0 rounded-full border border-border/70 bg-card px-3 py-1.5 text-[11px] font-bold text-primary shadow-sm"
         >
           Public view

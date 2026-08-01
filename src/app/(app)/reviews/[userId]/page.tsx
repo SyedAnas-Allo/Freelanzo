@@ -1,11 +1,15 @@
+"use client";
+
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
+import { useRouter } from "@/hooks/use-app-router";
 import { Star } from "lucide-react";
 import { PageBack } from "@/components/page-back";
+import { PageLoading } from "@/components/page-loading";
 import { ReviewListItem, StarRow } from "@/components/review-list-item";
 import { Badge } from "@/components/ui/badge";
-import { getSessionProfile } from "@/lib/auth";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/client";
 import type { BusinessProfile, Profile, Rating } from "@/types/database";
 
 function safeFrom(value: string | null | undefined): string | null {
@@ -13,46 +17,147 @@ function safeFrom(value: string | null | undefined): string | null {
   return value;
 }
 
-export default async function PublicReviewsPage({
-  params,
-  searchParams,
-}: {
-  params: Promise<{ userId: string }>;
-  searchParams: Promise<{ from?: string }>;
-}) {
-  const { userId } = await params;
-  const { from } = await searchParams;
-  const { user, profile: me } = await getSessionProfile();
-  if (!user) redirect("/login");
+export default function PublicReviewsPage() {
+  return (
+    <Suspense fallback={<PageLoading />}>
+      <PublicReviewsPageInner />
+    </Suspense>
+  );
+}
 
-  const supabase = await createClient();
-  const { data: subject } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("id", userId)
-    .maybeSingle();
-  if (!subject) notFound();
+function PublicReviewsPageInner() {
+  const router = useRouter();
+  const params = useParams<{ userId: string }>();
+  const searchParams = useSearchParams();
+  const userId = params.userId;
+  const from = searchParams.get("from");
 
-  const subjectProfile = subject as Profile;
-  const isSelf = user.id === userId;
+  const [loading, setLoading] = useState(true);
+  const [missing, setMissing] = useState(false);
+  const [isSelf, setIsSelf] = useState(false);
+  const [subjectName, setSubjectName] = useState("User");
+  const [subjectRole, setSubjectRole] = useState("Freelancer");
+  const [list, setList] = useState<Rating[]>([]);
+  const [backHref, setBackHref] = useState("/profile");
+  const [profileMap, setProfileMap] = useState<Map<string, Profile>>(
+    () => new Map(),
+  );
+  const [bizMap, setBizMap] = useState<
+    Map<
+      string,
+      Pick<BusinessProfile, "owner_id" | "business_name" | "logo_url" | "verified">
+    >
+  >(() => new Map());
 
-  const { data: business } = await supabase
-    .from("business_profiles")
-    .select("*")
-    .eq("owner_id", userId)
-    .maybeSingle();
-  const biz = business as BusinessProfile | null;
+  useEffect(() => {
+    async function load() {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        router.push("/login");
+        return;
+      }
 
-  const subjectName =
-    biz?.business_name || subjectProfile.full_name || "User";
-  const subjectRole = biz ? "Business" : "Freelancer";
+      const { data: meRow } = await supabase
+        .from("profiles")
+        .select("active_mode")
+        .eq("id", user.id)
+        .maybeSingle();
+      const me = meRow as Pick<Profile, "active_mode"> | null;
 
-  const { data: received } = await supabase
-    .from("ratings")
-    .select("*")
-    .eq("to_user_id", userId)
-    .order("created_at", { ascending: false });
-  const list = (received ?? []) as Rating[];
+      const { data: subject } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", userId)
+        .maybeSingle();
+      if (!subject) {
+        setMissing(true);
+        setLoading(false);
+        return;
+      }
+
+      const subjectProfile = subject as Profile;
+      const self = user.id === userId;
+      setIsSelf(self);
+
+      const { data: business } = await supabase
+        .from("business_profiles")
+        .select("*")
+        .eq("owner_id", userId)
+        .maybeSingle();
+      const biz = business as BusinessProfile | null;
+
+      setSubjectName(biz?.business_name || subjectProfile.full_name || "User");
+      setSubjectRole(biz ? "Business" : "Freelancer");
+
+      const { data: received } = await supabase
+        .from("ratings")
+        .select("*")
+        .eq("to_user_id", userId)
+        .order("created_at", { ascending: false });
+      const ratings = (received ?? []) as Rating[];
+      setList(ratings);
+
+      const reviewerIds = [...new Set(ratings.map((r) => r.from_user_id))];
+      const [{ data: profiles }, { data: reviewerBusinesses }] =
+        await Promise.all([
+          reviewerIds.length
+            ? supabase.from("profiles").select("*").in("id", reviewerIds)
+            : Promise.resolve({ data: [] }),
+          reviewerIds.length
+            ? supabase
+                .from("business_profiles")
+                .select("owner_id, business_name, logo_url, verified")
+                .in("owner_id", reviewerIds)
+            : Promise.resolve({ data: [] }),
+        ]);
+
+      setProfileMap(
+        new Map(((profiles ?? []) as Profile[]).map((p) => [p.id, p])),
+      );
+      setBizMap(
+        new Map(
+          (
+            (reviewerBusinesses ?? []) as Pick<
+              BusinessProfile,
+              "owner_id" | "business_name" | "logo_url" | "verified"
+            >[]
+          ).map((b) => [b.owner_id, b]),
+        ),
+      );
+
+      setBackHref(
+        safeFrom(from) ??
+          (self
+            ? "/profile"
+            : biz
+              ? `/freelancer/businesses/${biz.id}`
+              : me?.active_mode === "business"
+                ? `/business/freelancers/${userId}`
+                : "/freelancer"),
+      );
+      setLoading(false);
+    }
+    void load();
+  }, [from, router, userId]);
+
+  if (loading) return <PageLoading />;
+
+  if (missing) {
+    return (
+      <div className="px-4 py-10 text-center">
+        <p className="font-bold">Reviews not found</p>
+        <p className="mt-2 text-sm font-light text-muted-foreground">
+          This profile may have been removed.
+        </p>
+        <Link href="/profile" className="mt-4 inline-block text-sm font-bold text-primary">
+          Back
+        </Link>
+      </div>
+    );
+  }
 
   const avg =
     list.length > 0
@@ -64,41 +169,6 @@ export default async function PublicReviewsPage({
     count: list.filter((r) => Math.round(Number(r.overall)) === stars).length,
   }));
   const maxBucket = Math.max(1, ...buckets.map((b) => b.count));
-
-  const reviewerIds = [...new Set(list.map((r) => r.from_user_id))];
-  const [{ data: profiles }, { data: reviewerBusinesses }] = await Promise.all([
-    reviewerIds.length
-      ? supabase.from("profiles").select("*").in("id", reviewerIds)
-      : Promise.resolve({ data: [] }),
-    reviewerIds.length
-      ? supabase
-          .from("business_profiles")
-          .select("owner_id, business_name, logo_url, verified")
-          .in("owner_id", reviewerIds)
-      : Promise.resolve({ data: [] }),
-  ]);
-
-  const profileMap = new Map(
-    ((profiles ?? []) as Profile[]).map((p) => [p.id, p]),
-  );
-  const bizMap = new Map(
-    (
-      (reviewerBusinesses ?? []) as Pick<
-        BusinessProfile,
-        "owner_id" | "business_name" | "logo_url" | "verified"
-      >[]
-    ).map((b) => [b.owner_id, b]),
-  );
-
-  const backHref =
-    safeFrom(from) ??
-    (isSelf
-      ? "/profile"
-      : biz
-        ? `/freelancer/businesses/${biz.id}`
-        : me?.active_mode === "business"
-          ? `/business/freelancers/${userId}`
-          : "/freelancer");
 
   return (
     <div className="space-y-4 px-4 py-4 pb-8">
@@ -178,12 +248,9 @@ export default async function PublicReviewsPage({
             const reviewerBiz = bizMap.get(r.from_user_id);
             const reviewer = profileMap.get(r.from_user_id);
             const name =
-              reviewerBiz?.business_name ||
-              reviewer?.full_name ||
-              "User";
+              reviewerBiz?.business_name || reviewer?.full_name || "User";
             const role = reviewerBiz ? "Business" : "Freelancer";
-            const photo =
-              reviewerBiz?.logo_url || reviewer?.photo_url || null;
+            const photo = reviewerBiz?.logo_url || reviewer?.photo_url || null;
             return (
               <ReviewListItem
                 key={r.id}

@@ -1,7 +1,8 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
+import { useRouter } from "@/hooks/use-app-router";
 import { toast } from "sonner";
 import { PageContent } from "@/components/layout/page-content";
 import { PageHeader } from "@/components/layout/page-header";
@@ -10,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { isValidGstinFormat, normalizeGstin } from "@/lib/gstin";
+import { setActiveModeCookie } from "@/lib/role-session";
 import { createClient } from "@/lib/supabase/client";
 
 function safeReturnTo(value: string | null): string | null {
@@ -101,6 +103,7 @@ function BusinessSetupForm() {
         .from("profiles")
         .update({ active_mode: "business" })
         .eq("id", user.id);
+      setActiveModeCookie("business");
     }
 
     setLoading(false);

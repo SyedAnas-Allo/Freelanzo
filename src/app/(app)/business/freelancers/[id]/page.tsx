@@ -1,80 +1,153 @@
-import { notFound, redirect } from "next/navigation";
+"use client";
+
+import { Suspense, useEffect, useState } from "react";
+import Link from "next/link";
+import { useParams, useSearchParams } from "next/navigation";
+import { useRouter } from "@/hooks/use-app-router";
 import { Briefcase, UserRound } from "lucide-react";
 import { ContactActionBar } from "@/components/actions/contact-action-bar";
 import { ApplicantActions } from "@/components/applicant-actions";
 import { FreelancerProfileView } from "@/components/freelancer-profile-view";
 import { PageBack } from "@/components/page-back";
+import { PageLoading } from "@/components/page-loading";
 import { ReportMenuButton } from "@/components/report-menu-button";
 import { SettingsGroup, SettingsRow } from "@/components/settings-row";
 import { Badge } from "@/components/ui/badge";
-import { getSessionProfile } from "@/lib/auth";
 import { loadFreelancerStats } from "@/lib/load-freelancer-stats";
-import { createClient } from "@/lib/supabase/server";
+import {
+  type FreelancerProfileStats,
+} from "@/lib/profile-stats";
 import {
   applicationStatusLabel,
   applicationStatusVariant,
   isHiredStatus,
   isJobPhoneUnlocked,
 } from "@/lib/status";
-import type { Application, Job, Profile } from "@/types/database";
+import { createClient } from "@/lib/supabase/client";
+import type { Application, BusinessProfile, Job, Profile } from "@/types/database";
 
-export default async function FreelancerProfilePage({
-  params,
-  searchParams,
-}: {
-  params: Promise<{ id: string }>;
-  searchParams: Promise<{ job?: string }>;
-}) {
-  const { id } = await params;
-  const { job: jobId } = await searchParams;
-  const { business } = await getSessionProfile();
-  if (!business) redirect("/business/setup");
+const EMPTY_STATS: FreelancerProfileStats = {
+  jobsCompleted: 0,
+  acceptedJobs: 0,
+  attendanceRate: 100,
+  cancellationRate: 0,
+  noShowRate: 0,
+  reliability: 80,
+  avgRating: null,
+  reviewCount: 0,
+  totalEarnings: 0,
+  jobsInProgress: 0,
+};
 
-  const supabase = await createClient();
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("id", id)
-    .maybeSingle();
-  if (!profile) notFound();
+export default function FreelancerProfilePage() {
+  return (
+    <Suspense fallback={<PageLoading />}>
+      <FreelancerProfileInner />
+    </Suspense>
+  );
+}
 
-  const p = profile as Profile;
-  const stats = await loadFreelancerStats(supabase, id);
-  const photos: string[] = [];
+function FreelancerProfileInner() {
+  const router = useRouter();
+  const params = useParams<{ id: string }>();
+  const searchParams = useSearchParams();
+  const id = params.id;
+  const jobId = searchParams.get("job");
 
-  let application: Application | null = null;
-  let job: Job | null = null;
-  let acceptedCount = 0;
+  const [loading, setLoading] = useState(true);
+  const [missing, setMissing] = useState(false);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [stats, setStats] = useState<FreelancerProfileStats>(EMPTY_STATS);
+  const [application, setApplication] = useState<Application | null>(null);
+  const [job, setJob] = useState<Job | null>(null);
+  const [acceptedCount, setAcceptedCount] = useState(0);
 
-  if (jobId) {
-    const { data: jobRow } = await supabase
-      .from("jobs")
-      .select("*")
-      .eq("id", jobId)
-      .eq("business_id", business.id)
-      .maybeSingle();
-    job = (jobRow as Job) ?? null;
+  useEffect(() => {
+    async function load() {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        router.push("/login");
+        return;
+      }
 
-    if (job) {
-      const { data: app } = await supabase
-        .from("applications")
+      const { data: business } = await supabase
+        .from("business_profiles")
         .select("*")
-        .eq("job_id", jobId)
-        .eq("freelancer_id", id)
+        .eq("owner_id", user.id)
         .maybeSingle();
-      application = (app as Application) ?? null;
+      if (!business) {
+        router.push("/business/setup");
+        return;
+      }
+      const biz = business as BusinessProfile;
 
-      const { count: a } = await supabase
-        .from("applications")
-        .select("*", { count: "exact", head: true })
-        .eq("job_id", jobId)
-        .eq("status", "accepted");
-      acceptedCount = a ?? 0;
+      const { data: profileRow } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", id)
+        .maybeSingle();
+      if (!profileRow) {
+        setMissing(true);
+        setLoading(false);
+        return;
+      }
+
+      const p = profileRow as Profile;
+      setProfile(p);
+      setStats(await loadFreelancerStats(supabase, id));
+
+      if (jobId) {
+        const { data: jobRow } = await supabase
+          .from("jobs")
+          .select("*")
+          .eq("id", jobId)
+          .eq("business_id", biz.id)
+          .maybeSingle();
+        const nextJob = (jobRow as Job) ?? null;
+        setJob(nextJob);
+
+        if (nextJob) {
+          const { data: app } = await supabase
+            .from("applications")
+            .select("*")
+            .eq("job_id", jobId)
+            .eq("freelancer_id", id)
+            .maybeSingle();
+          setApplication((app as Application) ?? null);
+
+          const { count: a } = await supabase
+            .from("applications")
+            .select("*", { count: "exact", head: true })
+            .eq("job_id", jobId)
+            .eq("status", "accepted");
+          setAcceptedCount(a ?? 0);
+        }
+      }
+
+      setLoading(false);
     }
+    void load();
+  }, [id, jobId, router]);
+
+  if (loading) return <PageLoading />;
+
+  if (missing || !profile) {
+    return (
+      <div className="px-4 py-10 text-center">
+        <p className="font-bold">Freelancer not found</p>
+        <Link href="/business" className="mt-4 inline-block text-sm font-bold text-primary">
+          Back
+        </Link>
+      </div>
+    );
   }
 
   const reveal = application ? isHiredStatus(application.status) : false;
   const phoneUnlocked = job ? isJobPhoneUnlocked(job.status) : false;
+  const photos: string[] = [];
 
   return (
     <div className="space-y-4 px-4 py-4 pb-8">
@@ -91,8 +164,8 @@ export default async function FreelancerProfilePage({
           {application && job ? (
             <ReportMenuButton
               direction="business_to_freelancer"
-              reportedUserId={p.id}
-              reportedName={p.full_name || "Freelancer"}
+              reportedUserId={profile.id}
+              reportedName={profile.full_name || "Freelancer"}
               jobId={job.id}
               applicationId={application.id}
             />
@@ -101,7 +174,7 @@ export default async function FreelancerProfilePage({
       </div>
 
       <FreelancerProfileView
-        profile={p}
+        profile={profile}
         stats={stats}
         workPhotos={photos}
         variant="public"
@@ -112,7 +185,7 @@ export default async function FreelancerProfilePage({
               {reveal && job ? (
                 <ContactActionBar
                   className="mt-3"
-                  phone={phoneUnlocked ? p.phone : null}
+                  phone={phoneUnlocked ? profile.phone : null}
                   callLocked={!phoneUnlocked}
                   chatHref={`/messages/${job.id}`}
                 />

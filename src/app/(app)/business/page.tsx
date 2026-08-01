@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Bookmark,
@@ -9,17 +12,102 @@ import {
 } from "lucide-react";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { SectionHeader } from "@/components/layout/section-header";
+import { PageLoading } from "@/components/page-loading";
 import { StatCard } from "@/components/shared/stat-card";
 import { BusinessJobListItem } from "@/features/jobs/components/business-job-list-item";
-import { getSessionProfile } from "@/lib/auth";
+import { useSessionProfile } from "@/hooks/use-session-profile";
+import { useRouter } from "@/hooks/use-app-router";
 import { isActiveJob } from "@/lib/status";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/client";
 import { greetingForNow } from "@/lib/utils";
 import type { Job } from "@/types/database";
 
-export default async function BusinessHomePage() {
-  const { profile, business } = await getSessionProfile();
-  const supabase = await createClient();
+export default function BusinessHomePage() {
+  const router = useRouter();
+  const {
+    user,
+    profile,
+    business,
+    loading: sessionLoading,
+  } = useSessionProfile();
+  const [activeJobs, setActiveJobs] = useState<Job[]>([]);
+  const [applicantsByJob, setApplicantsByJob] = useState<Map<string, number>>(
+    new Map(),
+  );
+  const [applicantCount, setApplicantCount] = useState(0);
+  const [hiredToday, setHiredToday] = useState(0);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (sessionLoading) return;
+    if (!user) {
+      router.replace("/login");
+      return;
+    }
+
+    if (!business) return;
+
+    let cancelled = false;
+
+    async function load() {
+      const supabase = createClient();
+      const { data: jobs } = await supabase
+        .from("jobs")
+        .select("*")
+        .eq("business_id", business!.id)
+        .order("created_at", { ascending: false });
+
+      const jobList = (jobs ?? []) as Job[];
+      const nextActive = jobList.filter((job) => isActiveJob(job.status));
+
+      const jobIds = jobList.map((j) => j.id);
+      let nextApplicantCount = 0;
+      const nextApplicantsByJob = new Map<string, number>();
+
+      if (jobIds.length) {
+        const { data: apps } = await supabase
+          .from("applications")
+          .select("job_id")
+          .in("job_id", jobIds);
+        for (const row of apps ?? []) {
+          nextApplicantsByJob.set(
+            row.job_id,
+            (nextApplicantsByJob.get(row.job_id) ?? 0) + 1,
+          );
+        }
+        nextApplicantCount = apps?.length ?? 0;
+      }
+
+      const today = new Date().toISOString().slice(0, 10);
+      const nextHiredToday =
+        jobIds.length === 0
+          ? 0
+          : (
+              await supabase
+                .from("applications")
+                .select("*", { count: "exact", head: true })
+                .in("job_id", jobIds)
+                .eq("status", "accepted")
+                .gte("updated_at", `${today}T00:00:00`)
+            ).count ?? 0;
+
+      if (cancelled) return;
+      setActiveJobs(nextActive);
+      setApplicantsByJob(nextApplicantsByJob);
+      setApplicantCount(nextApplicantCount);
+      setHiredToday(nextHiredToday);
+      setLoading(false);
+    }
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionLoading, user, business, router]);
+
+  if (sessionLoading) {
+    return <PageLoading />;
+  }
 
   if (!business) {
     return (
@@ -48,45 +136,9 @@ export default async function BusinessHomePage() {
     );
   }
 
-  const { data: jobs } = await supabase
-    .from("jobs")
-    .select("*")
-    .eq("business_id", business.id)
-    .order("created_at", { ascending: false });
-
-  const jobList = (jobs ?? []) as Job[];
-  const activeJobs = jobList.filter((job) => isActiveJob(job.status));
-
-  const jobIds = jobList.map((j) => j.id);
-  let applicantCount = 0;
-  const applicantsByJob = new Map<string, number>();
-
-  if (jobIds.length) {
-    const { data: apps } = await supabase
-      .from("applications")
-      .select("job_id")
-      .in("job_id", jobIds);
-    for (const row of apps ?? []) {
-      applicantsByJob.set(
-        row.job_id,
-        (applicantsByJob.get(row.job_id) ?? 0) + 1,
-      );
-    }
-    applicantCount = apps?.length ?? 0;
+  if (loading) {
+    return <PageLoading />;
   }
-
-  const today = new Date().toISOString().slice(0, 10);
-  const hiredToday =
-    jobIds.length === 0
-      ? 0
-      : (
-          await supabase
-            .from("applications")
-            .select("*", { count: "exact", head: true })
-            .in("job_id", jobIds)
-            .eq("status", "accepted")
-            .gte("updated_at", `${today}T00:00:00`)
-        ).count ?? 0;
 
   const stats = [
     {

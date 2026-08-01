@@ -1,33 +1,65 @@
 "use client";
 
-import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useRef } from "react";
+import { usePathname } from "next/navigation";
+import { useCallback, useEffect, useEffectEvent, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
+
+type ShellBadges = {
+  unreadCount: number;
+  messageUnreadCount: number;
+};
 
 /**
- * Keeps AppShell SSR badges (notifications, message unread) fresh without
- * a permanent Realtime socket: refresh on in-app navigation and when the
- * tab becomes visible again.
+ * Keeps AppShell badges fresh without a full RSC `router.refresh()` on every
+ * navigation. Revalidates lightly via the browser Supabase client on route
+ * change + tab focus.
  */
-export function useShellRefresh() {
-  const router = useRouter();
+export function useShellBadges(initial: ShellBadges): ShellBadges {
   const pathname = usePathname();
-  const skipPathRefresh = useRef(true);
+  const [badges, setBadges] = useState(initial);
+
+  const refreshBadges = useCallback(async () => {
+    const supabase = createClient();
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    const user = session?.user;
+    if (!user) return;
+
+    const [{ count }, { data: messageUnread }] = await Promise.all([
+      supabase
+        .from("notifications")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", user.id)
+        .is("read_at", null),
+      supabase.rpc("job_chat_unread_total"),
+    ]);
+
+    setBadges({
+      unreadCount: count ?? 0,
+      messageUnreadCount: (messageUnread as number | null) ?? 0,
+    });
+  }, []);
+
+  const onPathOrVisible = useEffectEvent(() => {
+    void refreshBadges();
+  });
 
   useEffect(() => {
-    if (skipPathRefresh.current) {
-      skipPathRefresh.current = false;
-      return;
-    }
-    router.refresh();
-  }, [pathname, router]);
+    // Initial mount + subsequent in-app navigations (async badge fetch).
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch on route change
+    onPathOrVisible();
+  }, [pathname]);
 
   useEffect(() => {
     function onVisible() {
       if (document.visibilityState === "visible") {
-        router.refresh();
+        onPathOrVisible();
       }
     }
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
-  }, [router]);
+  }, []);
+
+  return badges;
 }

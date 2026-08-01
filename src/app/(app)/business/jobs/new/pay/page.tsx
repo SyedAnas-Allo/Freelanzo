@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/hooks/use-app-router";
 import { Banknote, Check, Shield } from "lucide-react";
 import { toast } from "sonner";
 import { InfoCallout } from "@/components/info-callout";

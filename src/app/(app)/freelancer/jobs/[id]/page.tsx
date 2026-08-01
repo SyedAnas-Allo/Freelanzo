@@ -1,5 +1,8 @@
+"use client";
+
+import { useEffect, useState, type ComponentType } from "react";
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { useParams } from "next/navigation";
 import {
   BadgeCheck,
   Briefcase,
@@ -14,23 +17,31 @@ import {
 } from "lucide-react";
 import { ContactActionBar } from "@/components/actions/contact-action-bar";
 import { ApplicationActionsMenu } from "@/components/application-actions-menu";
-import { AttendanceRecordCard, type AttendanceRecordView } from "@/components/attendance-record-card";
+import {
+  AttendanceRecordCard,
+  type AttendanceRecordView,
+} from "@/components/attendance-record-card";
 import { ExpandableText } from "@/components/expandable-text";
 import { InfoCallout } from "@/components/info-callout";
 import { JobDetailFooter } from "@/components/job-detail-footer";
 import { LifecycleTracker } from "@/components/lifecycle-tracker";
 import { PageBack } from "@/components/page-back";
+import { PageLoading } from "@/components/page-loading";
 import { PaymentResponsibilityCallout } from "@/components/payment-responsibility-callout";
 import { ReferJobButton } from "@/components/refer-button";
 import { shiftLabel } from "@/components/shift-timeline";
 import { SosCallout } from "@/components/sos-callout";
 import { JobCategoryIcon } from "@/features/jobs/components/job-category-icon";
 import { formatJobDateRelative } from "@/features/jobs/formatters/job-date";
-import { deriveApplicationLifecycle } from "@/lib/application-lifecycle";
-import { getSessionProfile } from "@/lib/auth";
+import {
+  deriveApplicationLifecycle,
+  type ApplicationLifecycle,
+} from "@/lib/application-lifecycle";
+import { useRouter } from "@/hooks/use-app-router";
+import { fetchSessionProfile } from "@/hooks/use-session-profile";
 import { loadAttendanceRecordsForApplication } from "@/lib/load-attendance-records";
 import { checkJobEligibility } from "@/lib/profile-eligibility";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/client";
 import { isHiredStatus, isJobPhoneUnlocked } from "@/lib/status";
 import {
   cn,
@@ -46,14 +57,14 @@ import {
   formatWorkDatesList,
   jobWorkDates,
 } from "@/lib/work-dates";
-import type { Application, Job } from "@/types/database";
+import type { Application, Job, Profile } from "@/types/database";
 
 function DetailRow({
   icon: Icon,
   label,
   value,
 }: {
-  icon: React.ComponentType<{ className?: string }>;
+  icon: ComponentType<{ className?: string }>;
   label: string;
   value: string;
 }) {
@@ -80,7 +91,7 @@ function StatCell({
   value,
   className,
 }: {
-  icon: React.ComponentType<{ className?: string }>;
+  icon: ComponentType<{ className?: string }>;
   label: string;
   value: string;
   className?: string;
@@ -100,120 +111,186 @@ function StatCell({
   );
 }
 
-export default async function JobDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
-  const { id } = await params;
-  const { user, profile } = await getSessionProfile();
-  if (!user) redirect("/login");
-
-  const supabase = await createClient();
-  const { data: job } = await supabase
-    .from("jobs")
-    .select("*, business_profiles(*)")
-    .eq("id", id)
-    .maybeSingle();
-
-  if (!job) notFound();
-
-  const typedJob = job as Job & {
-    business_profiles: {
-      owner_id: string;
-      business_name: string;
-      verified: boolean;
-      description: string | null;
-      address: string | null;
-      created_at: string;
-    };
+type JobWithBusiness = Job & {
+  business_profiles: {
+    owner_id: string;
+    business_name: string;
+    verified: boolean;
+    description: string | null;
+    address: string | null;
+    created_at: string;
   };
+};
 
-  const { data: application } = await supabase
-    .from("applications")
-    .select("*")
-    .eq("job_id", id)
-    .eq("freelancer_id", user.id)
-    .maybeSingle();
+type PageData = {
+  profile: Profile | null;
+  userId: string;
+  job: JobWithBusiness;
+  application: Application | null;
+  acceptedCount: number;
+  acceptingApplications: boolean;
+  jobsPostedCount: number;
+  businessPhone: string | null;
+  lifecycle: ApplicationLifecycle | null;
+  attendanceRecords: AttendanceRecordView[];
+};
 
-  const typedApp = application as Application | null;
-  const hired = typedApp ? isHiredStatus(typedApp.status) : false;
+export default function JobDetailPage() {
+  const { id } = useParams<{ id: string }>();
+  const router = useRouter();
+  const [loading, setLoading] = useState(true);
+  const [notFoundState, setNotFoundState] = useState(false);
+  const [data, setData] = useState<PageData | null>(null);
 
-  const [{ count: acceptedCount }, { data: availableRows }] = await Promise.all([
-    supabase
-      .from("applications")
-      .select("*", { count: "exact", head: true })
-      .eq("job_id", id)
-      .eq("status", "accepted"),
-    supabase.rpc("available_job_ids", { p_job_id: id }),
-  ]);
-  const acceptingApplications =
-    ((availableRows ?? []) as { job_id: string }[]).length > 0;
+  useEffect(() => {
+    async function load() {
+      const session = await fetchSessionProfile();
+      if (!session.user) {
+        router.replace("/login");
+        return;
+      }
 
-  const { count: jobsPostedCount } = await supabase
-    .from("jobs")
-    .select("*", { count: "exact", head: true })
-    .eq("business_id", typedJob.business_id);
+      const supabase = createClient();
+      const { data: job } = await supabase
+        .from("jobs")
+        .select("*, business_profiles(*)")
+        .eq("id", id)
+        .maybeSingle();
 
-  let businessPhone: string | null = null;
-  let lifecycle: ReturnType<typeof deriveApplicationLifecycle> | null = null;
-  let attendanceRecords: AttendanceRecordView[] = [];
+      if (!job) {
+        setNotFoundState(true);
+        setLoading(false);
+        return;
+      }
 
-  if (typedApp) {
-    const { data: events } = await supabase
-      .from("attendance_events")
-      .select("kind, work_date")
-      .eq("application_id", typedApp.id);
-    const { data: pay } = await supabase
-      .from("payments")
-      .select("status, business_claimed, freelancer_claimed")
-      .eq("application_id", typedApp.id)
-      .maybeSingle();
-    const { data: rating } = await supabase
-      .from("ratings")
-      .select("id")
-      .eq("application_id", typedApp.id)
-      .eq("from_user_id", user.id)
-      .maybeSingle();
+      const typedJob = job as JobWithBusiness;
 
-    lifecycle = deriveApplicationLifecycle({
-      applicationId: typedApp.id,
-      jobId: typedJob.id,
-      applicationStatus: typedApp.status,
-      jobStatus: typedJob.status,
-      workDates: jobWorkDates(typedJob),
-      events: events ?? [],
-      paymentStatus: (pay?.status as "pending" | "confirmed" | "dispute") ?? null,
-      businessClaimed: !!pay?.business_claimed,
-      freelancerClaimed: !!pay?.freelancer_claimed,
-      ratedByActor: !!rating,
-      headcount: typedJob.headcount,
-      acceptedCount: acceptedCount ?? 0,
-      actor: "freelancer",
-    });
+      const { data: application } = await supabase
+        .from("applications")
+        .select("*")
+        .eq("job_id", id)
+        .eq("freelancer_id", session.user.id)
+        .maybeSingle();
 
-    if (hired) {
-      attendanceRecords = await loadAttendanceRecordsForApplication(
-        supabase,
-        typedApp.id,
-      );
-      if (isJobPhoneUnlocked(typedJob.status)) {
-        const { data: owner } = await supabase
-          .from("business_profiles")
-          .select("owner_id")
-          .eq("id", typedJob.business_id)
+      const typedApp = application as Application | null;
+      const hired = typedApp ? isHiredStatus(typedApp.status) : false;
+
+      const [{ count: acceptedCount }, { data: availableRows }] =
+        await Promise.all([
+          supabase
+            .from("applications")
+            .select("*", { count: "exact", head: true })
+            .eq("job_id", id)
+            .eq("status", "accepted"),
+          supabase.rpc("available_job_ids", { p_job_id: id }),
+        ]);
+      const acceptingApplications =
+        ((availableRows ?? []) as { job_id: string }[]).length > 0;
+
+      const { count: jobsPostedCount } = await supabase
+        .from("jobs")
+        .select("*", { count: "exact", head: true })
+        .eq("business_id", typedJob.business_id);
+
+      let businessPhone: string | null = null;
+      let lifecycle: ApplicationLifecycle | null = null;
+      let attendanceRecords: AttendanceRecordView[] = [];
+
+      if (typedApp) {
+        const { data: events } = await supabase
+          .from("attendance_events")
+          .select("kind, work_date")
+          .eq("application_id", typedApp.id);
+        const { data: pay } = await supabase
+          .from("payments")
+          .select("status, business_claimed, freelancer_claimed")
+          .eq("application_id", typedApp.id)
           .maybeSingle();
-        if (owner) {
-          const { data: op } = await supabase
-            .from("profiles")
-            .select("phone")
-            .eq("id", owner.owner_id)
-            .maybeSingle();
-          businessPhone = op?.phone ?? null;
+        const { data: rating } = await supabase
+          .from("ratings")
+          .select("id")
+          .eq("application_id", typedApp.id)
+          .eq("from_user_id", session.user.id)
+          .maybeSingle();
+
+        lifecycle = deriveApplicationLifecycle({
+          applicationId: typedApp.id,
+          jobId: typedJob.id,
+          applicationStatus: typedApp.status,
+          jobStatus: typedJob.status,
+          workDates: jobWorkDates(typedJob),
+          events: events ?? [],
+          paymentStatus:
+            (pay?.status as "pending" | "confirmed" | "dispute") ?? null,
+          businessClaimed: !!pay?.business_claimed,
+          freelancerClaimed: !!pay?.freelancer_claimed,
+          ratedByActor: !!rating,
+          headcount: typedJob.headcount,
+          acceptedCount: acceptedCount ?? 0,
+          actor: "freelancer",
+        });
+
+        if (hired) {
+          attendanceRecords = await loadAttendanceRecordsForApplication(
+            supabase,
+            typedApp.id,
+          );
+          if (isJobPhoneUnlocked(typedJob.status)) {
+            const { data: owner } = await supabase
+              .from("business_profiles")
+              .select("owner_id")
+              .eq("id", typedJob.business_id)
+              .maybeSingle();
+            if (owner) {
+              const { data: op } = await supabase
+                .from("profiles")
+                .select("phone")
+                .eq("id", owner.owner_id)
+                .maybeSingle();
+              businessPhone = op?.phone ?? null;
+            }
+          }
         }
       }
+
+      setData({
+        profile: session.profile,
+        userId: session.user.id,
+        job: typedJob,
+        application: typedApp,
+        acceptedCount: acceptedCount ?? 0,
+        acceptingApplications,
+        jobsPostedCount: jobsPostedCount ?? 0,
+        businessPhone,
+        lifecycle,
+        attendanceRecords,
+      });
+      setLoading(false);
     }
+    void load();
+  }, [id, router]);
+
+  if (loading) return <PageLoading />;
+  if (notFoundState || !data) {
+    return (
+      <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+        Not found
+      </div>
+    );
   }
+
+  const {
+    profile,
+    job: typedJob,
+    application: typedApp,
+    acceptedCount,
+    acceptingApplications,
+    jobsPostedCount,
+    businessPhone,
+    lifecycle,
+    attendanceRecords,
+  } = data;
+  const hired = typedApp ? isHiredStatus(typedApp.status) : false;
 
   const distance =
     profile?.lat !== null &&
@@ -249,7 +326,7 @@ export default async function JobDetailPage({
     {
       icon: Briefcase,
       label: "Accepted",
-      value: `${acceptedCount ?? 0}/${typedJob.headcount}`,
+      value: `${acceptedCount}/${typedJob.headcount}`,
     },
     {
       icon: VenusAndMars,
@@ -289,8 +366,6 @@ export default async function JobDetailPage({
   ];
 
   const rawCta = lifecycle?.cta ?? null;
-  // Only surface actionable CTAs in the footer. Waiting/done labels and
-  // self-links ("View gig") belong in the tracker, not as a swipe bar.
   const footerCta =
     !rawCta ||
     rawCta.kind === "waiting" ||
@@ -304,8 +379,7 @@ export default async function JobDetailPage({
     !!typedApp &&
     (typedApp.status === "applied" || typedApp.status === "accepted") &&
     !!typedJob.business_profiles.owner_id;
-  const canApplyOrReapply =
-    !typedApp || typedApp.status === "cancelled";
+  const canApplyOrReapply = !typedApp || typedApp.status === "cancelled";
   const showFooter = canApplyOrReapply || !!footerCta;
 
   const editProfileHref = `/profile/edit?returnTo=${encodeURIComponent(`/freelancer/jobs/${typedJob.id}`)}`;
@@ -315,24 +389,19 @@ export default async function JobDetailPage({
     : { ok: true as const };
   const eligibilityBlock = eligibility.ok ? null : eligibility;
 
-  const footerPadClass = eligibilityBlock && canApplyOrReapply
-    ? "pb-[calc(14rem+env(safe-area-inset-bottom,0px))]"
-    : showFooter
-      ? "pb-[calc(6.25rem+env(safe-area-inset-bottom,0px))]"
-      : undefined;
+  const footerPadClass =
+    eligibilityBlock && canApplyOrReapply
+      ? "pb-[calc(14rem+env(safe-area-inset-bottom,0px))]"
+      : showFooter
+        ? "pb-[calc(6.25rem+env(safe-area-inset-bottom,0px))]"
+        : undefined;
 
   return (
-    <div
-      className={cn(
-        "px-4 pt-1",
-        footerPadClass,
-      )}
-    >
+    <div className={cn("px-4 pt-1", footerPadClass)}>
       <div className="mb-2 flex items-center justify-between gap-2">
         <PageBack href="/freelancer" />
         <ReferJobButton jobId={typedJob.id} jobTitle={typedJob.title} />
       </div>
-      {/* Hero */}
       <div className="flex gap-3">
         <JobCategoryIcon
           category={typedJob.category}
@@ -359,44 +428,44 @@ export default async function JobDetailPage({
                 </Link>
               </p>
             </div>
-              <div className="shrink-0 text-right">
-                <p className="text-[15px] font-extrabold leading-tight text-emerald-600">
-                  {formatPay(jobDayTotal(typedJob))}
-                  <span className="text-[11px] font-bold"> / Day</span>
+            <div className="shrink-0 text-right">
+              <p className="text-[15px] font-extrabold leading-tight text-emerald-600">
+                {formatPay(jobDayTotal(typedJob))}
+                <span className="text-[11px] font-bold"> / Day</span>
+              </p>
+              {multiDay ? (
+                <p className="mt-0.5 text-[10px] font-semibold text-emerald-700/80">
+                  {formatPay(
+                    jobEngagementTotal({
+                      ...typedJob,
+                      work_dates: dates,
+                    }),
+                  )}{" "}
+                  total · paid once
                 </p>
-                {multiDay ? (
-                  <p className="mt-0.5 text-[10px] font-semibold text-emerald-700/80">
-                    {formatPay(
-                      jobEngagementTotal({
-                        ...typedJob,
-                        work_dates: dates,
-                      }),
-                    )}{" "}
-                    total · paid once
-                  </p>
-                ) : (typedJob.food_allowance_inr > 0 ||
-                    typedJob.travel_allowance_inr > 0) ? (
-                  <p className="mt-0.5 text-[10px] font-medium leading-snug text-emerald-700/80">
-                    {formatJobPay(typedJob)}
-                  </p>
-                ) : null}
-                <div className="mt-2 inline-flex flex-col items-end gap-1 rounded-xl bg-primary/10 px-2.5 py-1.5 ring-1 ring-primary/20">
-                  <p
-                    className="flex items-center gap-1.5 text-[12px] font-extrabold leading-none text-foreground"
-                    suppressHydrationWarning
-                  >
-                    <Calendar className="size-3.5 shrink-0 text-primary" />
-                    {multiDay
-                      ? formatWorkDatesLabel(dates)
-                      : formatJobDateRelative(typedJob.job_date)}
-                  </p>
-                  <p className="flex items-center gap-1.5 text-[12px] font-extrabold leading-none text-foreground">
-                    <Clock className="size-3.5 shrink-0 text-primary" />
-                    {formatTime(typedJob.start_time)} –{" "}
-                    {formatTime(typedJob.end_time)}
-                  </p>
-                </div>
+              ) : typedJob.food_allowance_inr > 0 ||
+                typedJob.travel_allowance_inr > 0 ? (
+                <p className="mt-0.5 text-[10px] font-medium leading-snug text-emerald-700/80">
+                  {formatJobPay(typedJob)}
+                </p>
+              ) : null}
+              <div className="mt-2 inline-flex flex-col items-end gap-1 rounded-xl bg-primary/10 px-2.5 py-1.5 ring-1 ring-primary/20">
+                <p
+                  className="flex items-center gap-1.5 text-[12px] font-extrabold leading-none text-foreground"
+                  suppressHydrationWarning
+                >
+                  <Calendar className="size-3.5 shrink-0 text-primary" />
+                  {multiDay
+                    ? formatWorkDatesLabel(dates)
+                    : formatJobDateRelative(typedJob.job_date)}
+                </p>
+                <p className="flex items-center gap-1.5 text-[12px] font-extrabold leading-none text-foreground">
+                  <Clock className="size-3.5 shrink-0 text-primary" />
+                  {formatTime(typedJob.start_time)} –{" "}
+                  {formatTime(typedJob.end_time)}
+                </p>
               </div>
+            </div>
           </div>
         </div>
       </div>
@@ -512,7 +581,6 @@ export default async function JobDetailPage({
         </section>
       ) : null}
 
-      {/* Description */}
       <section className="mt-5 border-t border-border/60 pt-4">
         <h2 className="text-[13px] font-extrabold tracking-tight">
           Gig Description
@@ -524,7 +592,6 @@ export default async function JobDetailPage({
         </div>
       </section>
 
-      {/* Requirements */}
       {(requirements.length > 0 || detailRows.length > 0) && (
         <section className="mt-4 border-t border-border/60 pt-4">
           <h2 className="text-[13px] font-extrabold tracking-tight">
@@ -558,7 +625,6 @@ export default async function JobDetailPage({
         </section>
       )}
 
-      {/* Pay */}
       <section className="mt-4 border-t border-border/60 pt-4">
         <h2 className="text-[13px] font-extrabold tracking-tight">
           Pay & Benefits
@@ -595,7 +661,6 @@ export default async function JobDetailPage({
 
       {hired ? <SosCallout className="mt-4" /> : null}
 
-      {/* About */}
       <section className="mt-4 border-t border-border/60 pt-4">
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-[13px] font-extrabold tracking-tight">
@@ -625,7 +690,7 @@ export default async function JobDetailPage({
           <StatCell
             icon={Briefcase}
             label="Gigs Posted"
-            value={String(jobsPostedCount ?? 0)}
+            value={String(jobsPostedCount)}
           />
         </div>
 
@@ -659,7 +724,7 @@ export default async function JobDetailPage({
           hired={hired}
           jobId={typedJob.id}
           applicationId={typedApp?.id ?? null}
-          alreadyApplied={!!application && typedApp?.status !== "cancelled"}
+          alreadyApplied={!!typedApp && typedApp.status !== "cancelled"}
           applicationStatus={typedApp?.status ?? null}
           closed={!acceptingApplications}
           mapsUrl={mapsUrl}

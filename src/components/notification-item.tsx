@@ -1,7 +1,22 @@
 "use client";
 
 import Link from "next/link";
-import { markRead } from "@/app/(app)/notifications/actions";
+import { createClient } from "@/lib/supabase/client";
+
+async function markRead(notificationId: string) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return;
+
+  await supabase
+    .from("notifications")
+    .update({ read_at: new Date().toISOString() })
+    .eq("id", notificationId)
+    .eq("user_id", user.id)
+    .is("read_at", null);
+}
 
 export function NotificationItem({
   id,

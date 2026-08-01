@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Plus_Jakarta_Sans, Geist_Mono } from "next/font/google";
+import NextTopLoader from "nextjs-toploader";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
@@ -36,6 +37,14 @@ export default function RootLayout({
       className={`${jakarta.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full bg-muted/40 font-sans text-foreground">
+        <NextTopLoader
+          color="#8e30ff"
+          height={3}
+          showSpinner={false}
+          shadow={false}
+          crawlSpeed={200}
+          speed={200}
+        />
         <div className="app-shell flex min-h-dvh flex-col">{children}</div>
         <Toaster position="top-center" richColors />
       </body>

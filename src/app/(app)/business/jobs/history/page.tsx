@@ -1,33 +1,69 @@
-import { redirect } from "next/navigation";
+"use client";
+
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Briefcase, Search } from "lucide-react";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { FilterChipRow } from "@/components/filter-chip-row";
 import { PageContent } from "@/components/layout/page-content";
 import { PageHeader } from "@/components/layout/page-header";
+import { PageLoading } from "@/components/page-loading";
 import { Input } from "@/components/ui/input";
 import { JobHistoryListItem } from "@/features/jobs/components/job-history-list-item";
-import { getSessionProfile } from "@/lib/auth";
-import { createClient } from "@/lib/supabase/server";
+import { useSessionProfile } from "@/hooks/use-session-profile";
+import { useRouter } from "@/hooks/use-app-router";
+import { createClient } from "@/lib/supabase/client";
 import { isActiveJob } from "@/lib/status";
 import type { Job } from "@/types/database";
 
-export default async function JobHistoryPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ tab?: string; q?: string }>;
-}) {
-  const { tab = "all", q = "" } = await searchParams;
-  const { business } = await getSessionProfile();
-  if (!business) redirect("/business/setup");
+export default function JobHistoryPage() {
+  return (
+    <Suspense fallback={<PageLoading />}>
+      <JobHistoryContent />
+    </Suspense>
+  );
+}
 
-  const supabase = await createClient();
-  const { data: jobs } = await supabase
-    .from("jobs")
-    .select("*")
-    .eq("business_id", business.id)
-    .order("job_date", { ascending: false });
+function JobHistoryContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const tab = searchParams.get("tab") ?? "all";
+  const q = searchParams.get("q") ?? "";
+  const { user, business, loading: sessionLoading } = useSessionProfile();
+  const [allJobs, setAllJobs] = useState<Job[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  let list = (jobs ?? []) as Job[];
+  useEffect(() => {
+    if (sessionLoading) return;
+    if (!user) {
+      router.replace("/login");
+      return;
+    }
+    if (!business) {
+      router.replace("/business/setup");
+      return;
+    }
+
+    async function load() {
+      const supabase = createClient();
+      const { data: jobs } = await supabase
+        .from("jobs")
+        .select("*")
+        .eq("business_id", business!.id)
+        .order("job_date", { ascending: false });
+
+      setAllJobs((jobs ?? []) as Job[]);
+      setLoading(false);
+    }
+
+    void load();
+  }, [sessionLoading, user, business, router]);
+
+  if (sessionLoading || loading || !business) {
+    return <PageLoading />;
+  }
+
+  let list = allJobs;
   const counts = {
     active: list.filter((job) => isActiveJob(job.status)).length,
     completed: list.filter((j) => j.status === "completed").length,

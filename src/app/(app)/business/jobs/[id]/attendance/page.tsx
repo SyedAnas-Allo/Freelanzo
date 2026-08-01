@@ -1,8 +1,13 @@
-import { notFound, redirect } from "next/navigation";
+"use client";
+
+import { Suspense, useCallback, useEffect, useState } from "react";
+import { useParams, useSearchParams } from "next/navigation";
 import type { AttendanceRecordView } from "@/components/attendance-record-card";
 import { BusinessAttendanceClient } from "@/components/business-attendance-client";
-import { getSessionProfile } from "@/lib/auth";
-import { createClient } from "@/lib/supabase/server";
+import { PageLoading } from "@/components/page-loading";
+import { useRouter } from "@/hooks/use-app-router";
+import { fetchSessionProfile } from "@/hooks/use-session-profile";
+import { createClient } from "@/lib/supabase/client";
 import { localDateISO, jobWorkDates, pickAttendanceDay } from "@/lib/work-dates";
 import type { AttendanceKind, AttendanceOtp, Job } from "@/types/database";
 
@@ -12,29 +17,41 @@ type MissedWorker = {
   needs: AttendanceKind;
 };
 
-export default async function BusinessAttendancePage({
-  params,
-  searchParams,
-}: {
-  params: Promise<{ id: string }>;
-  searchParams: Promise<{ kind?: string; date?: string }>;
-}) {
-  const { id } = await params;
-  const { kind: kindParam, date: dateParam } = await searchParams;
+type AttendancePageData = {
+  job: Job;
+  kind: AttendanceKind;
+  workDate: string;
+  otp: AttendanceOtp | null;
+  applicationIds: string[];
+  checkedInCount: number;
+  checkedOutCount: number;
+  dayDoneCount: Record<string, number>;
+  attendanceRecords: AttendanceRecordView[];
+  missedWorkers: MissedWorker[];
+};
+
+async function loadAttendanceData(
+  id: string,
+  kindParam: string | null,
+  dateParam: string | null,
+): Promise<
+  | { ok: true; data: AttendancePageData }
+  | { ok: false; reason: "setup" | "not_found" }
+> {
+  const { business } = await fetchSessionProfile();
+  if (!business) return { ok: false, reason: "setup" };
+
   const kind: AttendanceKind =
     kindParam === "check_out" ? "check_out" : "check_in";
 
-  const { business } = await getSessionProfile();
-  if (!business) redirect("/business/setup");
-
-  const supabase = await createClient();
+  const supabase = createClient();
   const { data: job } = await supabase
     .from("jobs")
     .select("*")
     .eq("id", id)
     .eq("business_id", business.id)
     .maybeSingle();
-  if (!job) notFound();
+  if (!job) return { ok: false, reason: "not_found" };
 
   const typedJob = job as Job;
   const dates = jobWorkDates(typedJob);
@@ -171,19 +188,90 @@ export default async function BusinessAttendancePage({
     ).sort((a, b) => a.verifiedAt.localeCompare(b.verifiedAt));
   }
 
+  return {
+    ok: true,
+    data: {
+      job: typedJob,
+      kind,
+      workDate,
+      otp: (otp as AttendanceOtp | null) ?? null,
+      applicationIds: appIds,
+      checkedInCount,
+      checkedOutCount,
+      dayDoneCount,
+      attendanceRecords,
+      missedWorkers,
+    },
+  };
+}
+
+function BusinessAttendancePageInner() {
+  const { id } = useParams<{ id: string }>();
+  const searchParams = useSearchParams();
+  const kindParam = searchParams.get("kind");
+  const dateParam = searchParams.get("date");
+  const router = useRouter();
+  const [loading, setLoading] = useState(true);
+  const [notFoundState, setNotFoundState] = useState(false);
+  const [data, setData] = useState<AttendancePageData | null>(null);
+
+  const reload = useCallback(async () => {
+    const result = await loadAttendanceData(id, kindParam, dateParam);
+    if (!result.ok) {
+      if (result.reason === "setup") {
+        router.replace("/business/setup");
+        return;
+      }
+      setNotFoundState(true);
+      setData(null);
+      setLoading(false);
+      return;
+    }
+    setData(result.data);
+    setNotFoundState(false);
+    setLoading(false);
+  }, [id, kindParam, dateParam, router]);
+
+  useEffect(() => {
+    // Client data load — setState runs after awaited Supabase calls.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch on mount/params
+    void reload();
+  }, [reload]);
+
+  if (loading) return <PageLoading />;
+  if (notFoundState || !data) {
+    return (
+      <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+        Not found
+      </div>
+    );
+  }
+
   return (
     <BusinessAttendanceClient
-      job={typedJob}
-      kind={kind}
-      workDate={workDate}
-      initialOtp={(otp as AttendanceOtp | null) ?? null}
-      applicationIds={appIds}
-      checkedInCount={checkedInCount}
-      checkedOutCount={checkedOutCount}
-      acceptedCount={appIds.length}
-      dayDoneCount={dayDoneCount}
-      attendanceRecords={attendanceRecords}
-      missedWorkers={missedWorkers}
+      key={`${data.kind}-${data.workDate}`}
+      job={data.job}
+      kind={data.kind}
+      workDate={data.workDate}
+      initialOtp={data.otp}
+      applicationIds={data.applicationIds}
+      checkedInCount={data.checkedInCount}
+      checkedOutCount={data.checkedOutCount}
+      acceptedCount={data.applicationIds.length}
+      dayDoneCount={data.dayDoneCount}
+      attendanceRecords={data.attendanceRecords}
+      missedWorkers={data.missedWorkers}
+      onReload={() => {
+        void reload();
+      }}
     />
+  );
+}
+
+export default function BusinessAttendancePage() {
+  return (
+    <Suspense fallback={<PageLoading />}>
+      <BusinessAttendancePageInner />
+    </Suspense>
   );
 }

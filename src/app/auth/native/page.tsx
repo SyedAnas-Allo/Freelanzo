@@ -1,3 +1,5 @@
+"use client";
+
 import { Suspense } from "react";
 import NativeAuthPage from "./native-auth-client";
 

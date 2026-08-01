@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/hooks/use-app-router";
 import { ChevronLeft, ChevronRight, Plus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { PageContent } from "@/components/layout/page-content";

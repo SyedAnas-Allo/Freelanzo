@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/hooks/use-app-router";
 import { useMemo, useState, useTransition } from "react";
 import { Star } from "lucide-react";
 import { toast } from "sonner";

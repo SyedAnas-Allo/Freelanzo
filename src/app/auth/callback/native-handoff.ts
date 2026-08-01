@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { ROLE_READY_COOKIE } from "@/lib/role-session";
+import { ACTIVE_MODE_COOKIE, ROLE_READY_COOKIE } from "@/lib/role-session";
 import { createClient } from "@/lib/supabase/server";
 
 const APP_SCHEME = "freelanzo";
@@ -100,6 +100,7 @@ export async function finishNativeOAuth(
   if (!error) {
     const response = NextResponse.redirect(`${origin}${next}`);
     response.cookies.set(ROLE_READY_COOKIE, "", { path: "/", maxAge: 0 });
+    response.cookies.set(ACTIVE_MODE_COOKIE, "", { path: "/", maxAge: 0 });
     return response;
   }
 

@@ -2,13 +2,14 @@
 
 import { useRealtimeRefresh } from "@/hooks/use-realtime-refresh";
 
-/** Client boundary that refreshes the current RSC tree when a table changes. */
+/** Subscribes to a table and calls onEvent when rows change. */
 export function LiveRefresh({
   channelName,
   table,
   event = "INSERT",
   filter,
   enabled = true,
+  onEvent,
   children,
 }: {
   channelName: string;
@@ -16,8 +17,9 @@ export function LiveRefresh({
   event?: "INSERT" | "UPDATE" | "DELETE" | "*";
   filter?: string;
   enabled?: boolean;
+  onEvent: () => void;
   children: React.ReactNode;
 }) {
-  useRealtimeRefresh({ channelName, table, event, filter, enabled });
+  useRealtimeRefresh({ channelName, table, event, filter, enabled, onEvent });
   return children;
 }

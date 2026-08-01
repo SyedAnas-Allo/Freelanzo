@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/hooks/use-app-router";
 import {
   ArrowRight,
   Briefcase,
@@ -78,7 +78,7 @@ export default function ContinuePage() {
       }
     }
 
-    setRoleReadyCookie();
+    setRoleReadyCookie(mode);
     // Hard navigate so (app) layout mounts with the saved mode. Soft push after
     // a refresh can preserve a freelancer shell while landing on /business.
     window.location.assign(mode === "business" ? "/business" : "/freelancer");

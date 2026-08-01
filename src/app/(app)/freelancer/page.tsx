@@ -1,66 +1,127 @@
+"use client";
+
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { MapPin, Package } from "lucide-react";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { JobCard } from "@/components/job-card";
 import { PageHeader } from "@/components/layout/page-header";
+import { PageLoading } from "@/components/page-loading";
 import { SectionHeader } from "@/components/layout/section-header";
 import { LocationSelector } from "@/components/location-selector";
 import { Badge } from "@/components/ui/badge";
 import { jobCategoryIcons } from "@/features/jobs/components/job-category-icon";
-import { getSessionProfile } from "@/lib/auth";
-import { createClient } from "@/lib/supabase/server";
+import { useSessionProfile } from "@/hooks/use-session-profile";
+import { useRouter } from "@/hooks/use-app-router";
+import { createClient } from "@/lib/supabase/client";
 import { CATEGORIES, greetingForNow, haversineKm } from "@/lib/utils";
 import type { Job, JobCategory } from "@/types/database";
 
-export default async function FreelancerHomePage({
-  searchParams,
-}: {
-  searchParams: Promise<{ category?: string }>;
-}) {
-  const { category = "all" } = await searchParams;
-  const { profile } = await getSessionProfile();
-  const supabase = await createClient();
+type NearbyJob = Job & {
+  business_profiles: {
+    business_name: string;
+    verified: boolean;
+  } | null;
+  distanceKm: number;
+};
 
-  let query = supabase
-    .from("jobs")
-    .select("*, business_profiles(business_name, verified)")
-    .eq("status", "live")
-    .order("job_date", { ascending: true });
-
-  if (category !== "all") {
-    query = query.eq("category", category as JobCategory);
-  }
-
-  const [{ data: jobs }, { data: availableRows }] = await Promise.all([
-    query,
-    supabase.rpc("available_job_ids"),
-  ]);
-  const availableJobIds = new Set(
-    ((availableRows ?? []) as { job_id: string }[]).map((row) => row.job_id),
+export default function FreelancerHomePage() {
+  return (
+    <Suspense fallback={<PageLoading />}>
+      <FreelancerHomeContent />
+    </Suspense>
   );
+}
 
-  const lat = profile?.lat ?? null;
-  const lng = profile?.lng ?? null;
-  const radius = profile?.search_radius_km ?? 10;
-  const area = profile?.area ?? null;
-  const city = profile?.city ?? null;
-  const hasUserLocation = lat !== null && lng !== null;
+function FreelancerHomeContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const category = searchParams.get("category") ?? "all";
+  const { user, profile, loading: sessionLoading } = useSessionProfile();
+  const [nearby, setNearby] = useState<NearbyJob[]>([]);
+  const [hasUserLocation, setHasUserLocation] = useState(false);
+  const [area, setArea] = useState<string | null>(null);
+  const [city, setCity] = useState<string | null>(null);
+  const [lat, setLat] = useState<number | null>(null);
+  const [lng, setLng] = useState<number | null>(null);
+  const [radius, setRadius] = useState(10);
+  const [loading, setLoading] = useState(true);
 
-  const nearby = hasUserLocation
-    ? ((jobs ?? []) as (Job & {
-        business_profiles: {
-          business_name: string;
-          verified: boolean;
-        } | null;
-      })[])
-        .filter((job) => availableJobIds.has(job.id))
-        .map((job) => ({
-          ...job,
-          distanceKm: haversineKm(lat, lng, job.lat, job.lng),
-        }))
-        .filter((job) => job.distanceKm <= radius)
-        .sort((a, b) => a.distanceKm - b.distanceKm)
-    : [];
+  useEffect(() => {
+    if (sessionLoading) return;
+    if (!user) {
+      router.replace("/login");
+      return;
+    }
+
+    let cancelled = false;
+
+    async function load() {
+      const supabase = createClient();
+
+      let query = supabase
+        .from("jobs")
+        .select("*, business_profiles(business_name, verified)")
+        .eq("status", "live")
+        .order("job_date", { ascending: true });
+
+      if (category !== "all") {
+        query = query.eq("category", category as JobCategory);
+      }
+
+      const [{ data: jobs }, { data: availableRows }] = await Promise.all([
+        query,
+        supabase.rpc("available_job_ids"),
+      ]);
+      const availableJobIds = new Set(
+        ((availableRows ?? []) as { job_id: string }[]).map((row) => row.job_id),
+      );
+
+      const userLat = profile?.lat ?? null;
+      const userLng = profile?.lng ?? null;
+      const userRadius = profile?.search_radius_km ?? 10;
+      const userArea = profile?.area ?? null;
+      const userCity = profile?.city ?? null;
+      const located = userLat !== null && userLng !== null;
+
+      setLat(userLat);
+      setLng(userLng);
+      setRadius(userRadius);
+      setArea(userArea);
+      setCity(userCity);
+      setHasUserLocation(located);
+
+      const nextNearby = located
+        ? ((jobs ?? []) as (Job & {
+            business_profiles: {
+              business_name: string;
+              verified: boolean;
+            } | null;
+          })[])
+            .filter((job) => availableJobIds.has(job.id))
+            .map((job) => ({
+              ...job,
+              distanceKm: haversineKm(userLat, userLng, job.lat, job.lng),
+            }))
+            .filter((job) => job.distanceKm <= userRadius)
+            .sort((a, b) => a.distanceKm - b.distanceKm)
+        : [];
+
+      if (cancelled) return;
+      setNearby(nextNearby);
+      setLoading(false);
+    }
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionLoading, user, profile, category, router]);
+
+  if (sessionLoading || loading) {
+    return <PageLoading />;
+  }
 
   return (
     <div className="space-y-4 px-4 pb-4 pt-1">

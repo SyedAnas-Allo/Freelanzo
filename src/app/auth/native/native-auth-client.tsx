@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
+import { useRouter } from "@/hooks/use-app-router";
 import { clearRoleReadyCookie } from "@/lib/role-session";
 import { createClient } from "@/lib/supabase/client";
 import { completeNativeOAuth } from "@/lib/supabase/native-auth";

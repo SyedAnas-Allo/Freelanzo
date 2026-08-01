@@ -66,7 +66,7 @@ function isPkceMissingError(message: string | undefined): boolean {
  */
 export async function completeNativeOAuth(code: string) {
   const native = createNativePkceClient();
-  let { data, error } = await native.auth.exchangeCodeForSession(code);
+  const { data, error } = await native.auth.exchangeCodeForSession(code);
 
   // Older builds may have started OAuth with cookie storage.
   if (error && isPkceMissingError(error.message)) {

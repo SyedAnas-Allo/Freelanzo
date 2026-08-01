@@ -1,18 +1,24 @@
+"use client";
+
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { ClipboardList } from "lucide-react";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { FilterChipRow } from "@/components/filter-chip-row";
 import { JobCard } from "@/components/job-card";
 import { PageContent } from "@/components/layout/page-content";
 import { PageHeader } from "@/components/layout/page-header";
-import { getSessionProfile } from "@/lib/auth";
+import { PageLoading } from "@/components/page-loading";
+import { useSessionProfile } from "@/hooks/use-session-profile";
+import { useRouter } from "@/hooks/use-app-router";
 import {
   freelancerJobStatusLabel,
   freelancerJobStatusVariant,
   isAcceptedCompletedWork,
   isAcceptedSelectedWork,
 } from "@/lib/status";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import type { Application, Job } from "@/types/database";
 
@@ -33,6 +39,15 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "cancelled", label: "Withdrawn" },
 ];
 
+type AppWithJob = Application & {
+  jobs: Job & {
+    business_profiles: {
+      business_name: string;
+      verified: boolean;
+    } | null;
+  };
+};
+
 function matchesTab(
   applicationStatus: Application["status"],
   jobStatus: Job["status"],
@@ -48,39 +63,65 @@ function matchesTab(
   return applicationStatus === tab;
 }
 
-export default async function MyJobsPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ tab?: string }>;
-}) {
-  const { tab: rawTab = "all" } = await searchParams;
+export default function MyJobsPage() {
+  return (
+    <Suspense fallback={<PageLoading />}>
+      <MyJobsContent />
+    </Suspense>
+  );
+}
+
+function MyJobsContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const rawTab = searchParams.get("tab") ?? "all";
   const tab = (
     TABS.some((item) => item.key === rawTab) ? rawTab : "all"
   ) as TabKey;
-  const { user } = await getSessionProfile();
-  const supabase = await createClient();
+  const { user, loading: sessionLoading } = useSessionProfile();
+  const [withJobs, setWithJobs] = useState<AppWithJob[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const { data: apps } = await supabase
-    .from("applications")
-    .select("*, jobs(*, business_profiles(business_name, verified))")
-    .eq("freelancer_id", user!.id)
-    .order("created_at", { ascending: false });
+  useEffect(() => {
+    if (sessionLoading) return;
+    if (!user) {
+      router.replace("/login");
+      return;
+    }
 
-  const rows = (apps ?? []) as (Application & {
-    jobs:
-      | (Job & {
-          business_profiles: {
-            business_name: string;
-            verified: boolean;
-          } | null;
-        })
-      | null;
-  })[];
+    async function load() {
+      const supabase = createClient();
+      const { data: apps } = await supabase
+        .from("applications")
+        .select("*, jobs(*, business_profiles(business_name, verified))")
+        .eq("freelancer_id", user!.id)
+        .order("created_at", { ascending: false });
 
-  const withJobs = rows.filter(
-    (row): row is typeof row & { jobs: NonNullable<typeof row.jobs> } =>
-      row.jobs != null,
-  );
+      const rows = (apps ?? []) as (Application & {
+        jobs:
+          | (Job & {
+              business_profiles: {
+                business_name: string;
+                verified: boolean;
+              } | null;
+            })
+          | null;
+      })[];
+
+      setWithJobs(
+        rows.filter(
+          (row): row is AppWithJob => row.jobs != null,
+        ),
+      );
+      setLoading(false);
+    }
+
+    void load();
+  }, [sessionLoading, user, router]);
+
+  if (sessionLoading || loading) {
+    return <PageLoading />;
+  }
 
   const filtered = withJobs.filter((a) =>
     matchesTab(a.status, a.jobs.status, tab),

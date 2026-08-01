@@ -1,5 +1,8 @@
+"use client";
+
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import {
   Calendar,
   ChevronDown,
@@ -24,11 +27,17 @@ import {
 import { EmptyState } from "@/components/feedback/empty-state";
 import { SuccessScreen } from "@/components/feedback/success-screen";
 import { PageBack } from "@/components/page-back";
+import { PageLoading } from "@/components/page-loading";
 import { ReferJobButton } from "@/components/refer-button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ApplicantFilterTabs } from "@/features/applications/components/applicant-filter-tabs";
-import { summarizeJobLifecycles } from "@/lib/application-lifecycle";
-import { getSessionProfile } from "@/lib/auth";
+import {
+  summarizeJobLifecycles,
+  type ApplicationLifecycle,
+  type JobLifecycleSummary,
+} from "@/lib/application-lifecycle";
+import { useRouter } from "@/hooks/use-app-router";
+import { fetchSessionProfile } from "@/hooks/use-session-profile";
 import { loadApplicationLifecycles } from "@/lib/load-application-lifecycles";
 import { loadAttendanceRecordsByApplication } from "@/lib/load-attendance-records";
 import {
@@ -39,7 +48,7 @@ import {
   isJobPhoneUnlocked,
   jobStatusLabel,
 } from "@/lib/status";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/client";
 import {
   cn,
   formatPay,
@@ -47,81 +56,120 @@ import {
   jobDayTotal,
   jobEngagementTotal,
 } from "@/lib/utils";
-import {
-  formatWorkDatesLabel,
-  jobWorkDates,
-} from "@/lib/work-dates";
-import type {
-  Application,
-  Job,
-  Profile,
-} from "@/types/database";
+import { formatWorkDatesLabel, jobWorkDates } from "@/lib/work-dates";
+import type { Application, Job, Profile } from "@/types/database";
 
-export default async function ApplicantsPage({
-  params,
-  searchParams,
-}: {
-  params: Promise<{ id: string }>;
-  searchParams: Promise<{ tab?: string }>;
-}) {
-  const { id } = await params;
-  const { tab = "all" } = await searchParams;
-  const { user, business } = await getSessionProfile();
-  if (!business) redirect("/business/setup");
+type AppRow = Application & { profiles: Profile };
 
-  const supabase = await createClient();
-  const { data: job } = await supabase
-    .from("jobs")
-    .select("*")
-    .eq("id", id)
-    .eq("business_id", business.id)
-    .maybeSingle();
-  if (!job) notFound();
+type PageData = {
+  job: Job;
+  rows: AppRow[];
+  lifecycles: Map<string, ApplicationLifecycle>;
+  attendanceByApp: Map<string, AttendanceRecordView[]>;
+  summary: JobLifecycleSummary;
+};
 
-  const typedJob = job as Job;
+function ApplicantsPageInner() {
+  const { id } = useParams<{ id: string }>();
+  const searchParams = useSearchParams();
+  const tab = searchParams.get("tab") ?? "all";
+  const router = useRouter();
+  const [loading, setLoading] = useState(true);
+  const [notFoundState, setNotFoundState] = useState(false);
+  const [data, setData] = useState<PageData | null>(null);
 
-  const { data: apps } = await supabase
-    .from("applications")
-    .select("*, profiles(*)")
-    .eq("job_id", id)
-    .order("created_at", { ascending: false });
+  useEffect(() => {
+    async function load() {
+      const { user, business } = await fetchSessionProfile();
+      if (!business) {
+        router.replace("/business/setup");
+        return;
+      }
+      if (!user) {
+        router.replace("/login");
+        return;
+      }
 
-  const rows = (apps ?? []) as (Application & { profiles: Profile })[];
+      const supabase = createClient();
+      const { data: job } = await supabase
+        .from("jobs")
+        .select("*")
+        .eq("id", id)
+        .eq("business_id", business.id)
+        .maybeSingle();
+      if (!job) {
+        setNotFoundState(true);
+        setLoading(false);
+        return;
+      }
 
+      const typedJob = job as Job;
+
+      const { data: apps } = await supabase
+        .from("applications")
+        .select("*, profiles(*)")
+        .eq("job_id", id)
+        .order("created_at", { ascending: false });
+
+      const rows = (apps ?? []) as AppRow[];
+      const accepted = rows.filter((a) => a.status === "accepted");
+      const applied = rows.filter((a) => a.status === "applied");
+
+      const jobsById = new Map([[typedJob.id, typedJob]]);
+      const acceptedCountByJob = new Map([[typedJob.id, accepted.length]]);
+
+      const [lifecycles, attendanceByApp] = await Promise.all([
+        loadApplicationLifecycles(supabase, {
+          applications: rows.map((a) => ({
+            id: a.id,
+            job_id: a.job_id,
+            status: a.status,
+          })),
+          jobsById,
+          actor: "business",
+          actorUserId: user.id,
+          acceptedCountByJob,
+        }),
+        loadAttendanceRecordsByApplication(
+          supabase,
+          accepted.map((a) => a.id),
+        ),
+      ]);
+
+      const summary = summarizeJobLifecycles(
+        typedJob.id,
+        typedJob.headcount,
+        typedJob.status,
+        [...lifecycles.values()],
+        applied.length,
+      );
+
+      setData({
+        job: typedJob,
+        rows,
+        lifecycles,
+        attendanceByApp,
+        summary,
+      });
+      setLoading(false);
+    }
+    void load();
+  }, [id, router]);
+
+  if (loading) return <PageLoading />;
+  if (notFoundState || !data) {
+    return (
+      <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+        Not found
+      </div>
+    );
+  }
+
+  const { job: typedJob, rows, lifecycles, attendanceByApp, summary } = data;
   const accepted = rows.filter((a) => a.status === "accepted");
   const applied = rows.filter((a) => a.status === "applied");
   const rejected = rows.filter((a) => a.status === "rejected");
-
-  const jobsById = new Map([[typedJob.id, typedJob]]);
-  const acceptedCountByJob = new Map([[typedJob.id, accepted.length]]);
-
-  const [lifecycles, attendanceByApp] = await Promise.all([
-    loadApplicationLifecycles(supabase, {
-      applications: rows.map((a) => ({
-        id: a.id,
-        job_id: a.job_id,
-        status: a.status,
-      })),
-      jobsById,
-      actor: "business",
-      actorUserId: user!.id,
-      acceptedCountByJob,
-    }),
-    loadAttendanceRecordsByApplication(
-      supabase,
-      accepted.map((a) => a.id),
-    ),
-  ]);
-
   const hasAnyAttendance = attendanceByApp.size > 0;
-
-  const summary = summarizeJobLifecycles(
-    typedJob.id,
-    typedJob.headcount,
-    typedJob.status,
-    [...lifecycles.values()],
-    applied.length,
-  );
 
   const filledPct = Math.min(
     100,
@@ -392,5 +440,13 @@ export default async function ApplicantsPage({
         </div>
       ) : null}
     </div>
+  );
+}
+
+export default function ApplicantsPage() {
+  return (
+    <Suspense fallback={<PageLoading />}>
+      <ApplicantsPageInner />
+    </Suspense>
   );
 }

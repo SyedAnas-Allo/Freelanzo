@@ -1,8 +1,13 @@
+"use client";
+
+import { Suspense, useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { MessageSquare, Search } from "lucide-react";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { LiveRefresh } from "@/components/live-refresh";
 import { PageContent } from "@/components/layout/page-content";
 import { PageHeader } from "@/components/layout/page-header";
+import { PageLoading } from "@/components/page-loading";
 import { MessageThreadRow } from "@/components/message-thread-row";
 import { Input } from "@/components/ui/input";
 import {
@@ -12,28 +17,53 @@ import {
   jobChatHref,
 } from "@/lib/chat";
 import { loadJobChatSummaries } from "@/lib/load-job-chats";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/client";
 import type { JobChatSummary } from "@/types/database";
 
-export default async function MessagesPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ q?: string }>;
-}) {
-  const { q = "" } = await searchParams;
-  const supabase = await createClient();
+export default function MessagesPage() {
+  return (
+    <Suspense fallback={<PageLoading />}>
+      <MessagesPageInner />
+    </Suspense>
+  );
+}
 
-  let summaries: JobChatSummary[] = [];
-  try {
-    summaries = await loadJobChatSummaries(supabase);
-  } catch {
-    summaries = [];
-  }
+function MessagesPageInner() {
+  const searchParams = useSearchParams();
+  const q = searchParams.get("q") ?? "";
+  const [summaries, setSummaries] = useState<JobChatSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const reload = useCallback(async () => {
+    const supabase = createClient();
+    try {
+      const next = await loadJobChatSummaries(supabase);
+      setSummaries(next);
+    } catch {
+      setSummaries([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    async function load() {
+      await reload();
+      setLoading(false);
+    }
+    void load();
+  }, [reload]);
+
+  if (loading) return <PageLoading />;
 
   const threads = filterChatSummaries(summaries, q);
 
   return (
-    <LiveRefresh channelName="messages-list" table="job_messages">
+    <LiveRefresh
+      channelName="messages-list"
+      table="job_messages"
+      onEvent={() => {
+        void reload();
+      }}
+    >
       <PageContent>
         <PageHeader
           title="Messages"

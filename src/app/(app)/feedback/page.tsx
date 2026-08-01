@@ -1,23 +1,44 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useRouter } from "@/hooks/use-app-router";
 import { PageContent } from "@/components/layout/page-content";
 import { PageHeader } from "@/components/layout/page-header";
+import { PageLoading } from "@/components/page-loading";
 import { FeedbackForm } from "@/components/feedback-form";
-import { getSessionProfile } from "@/lib/auth";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/client";
 import type { AppFeedback } from "@/types/database";
 
-export default async function FeedbackPage() {
-  const { user } = await getSessionProfile();
-  if (!user) return null;
+export default function FeedbackPage() {
+  const router = useRouter();
+  const [loading, setLoading] = useState(true);
+  const [recent, setRecent] = useState<AppFeedback[]>([]);
 
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from("app_feedback")
-    .select("*")
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false })
-    .limit(3);
+  useEffect(() => {
+    async function load() {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        router.push("/login");
+        return;
+      }
 
-  const recent = (data ?? []) as AppFeedback[];
+      const { data } = await supabase
+        .from("app_feedback")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(3);
+
+      setRecent((data ?? []) as AppFeedback[]);
+      setLoading(false);
+    }
+    void load();
+  }, [router]);
+
+  if (loading) return <PageLoading />;
 
   return (
     <PageContent className="pb-8">

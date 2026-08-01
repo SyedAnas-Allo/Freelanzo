@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/hooks/use-app-router";
 import { useMemo, useState, useTransition } from "react";
 import { Camera, Shield } from "lucide-react";
 import { toast } from "sonner";
@@ -68,6 +68,7 @@ export function BusinessAttendanceClient({
   dayDoneCount,
   attendanceRecords,
   missedWorkers = [],
+  onReload,
 }: {
   job: Job;
   kind: AttendanceKind;
@@ -81,6 +82,8 @@ export function BusinessAttendanceClient({
   dayDoneCount?: Record<string, number>;
   attendanceRecords: AttendanceRecordView[];
   missedWorkers?: MissedWorker[];
+  /** Re-fetch attendance data (realtime + after OTP generate). */
+  onReload?: () => void;
 }) {
   const router = useRouter();
   const dates = useMemo(() => jobWorkDates(job), [job]);
@@ -109,7 +112,8 @@ export function BusinessAttendanceClient({
     channelName: `attendance:${job.id}`,
     table: "attendance_events",
     filter: attendanceFilter,
-    enabled: applicationIds.length > 0,
+    enabled: applicationIds.length > 0 && !!onReload,
+    onEvent: () => onReload?.(),
   });
 
   const doneDates = useMemo(() => {
@@ -147,7 +151,7 @@ export function BusinessAttendanceClient({
       }
       setOtp(data as AttendanceOtp);
       toast.success(`${isCheckIn ? "Check-in" : "Check-out"} OTP generated`);
-      router.refresh();
+      onReload?.();
     });
   }
 

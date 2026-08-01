@@ -1,9 +1,7 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AttendanceRecordView } from "@/components/attendance-record-card";
 import { attendanceKindLabel } from "@/lib/attendance";
-import { createClient } from "@/lib/supabase/server";
 import type { AttendanceKind } from "@/types/database";
-
-type ServerClient = Awaited<ReturnType<typeof createClient>>;
 
 type AttendanceEventRow = {
   id: string;
@@ -19,7 +17,7 @@ type AttendanceEventRow = {
 };
 
 async function toRecordView(
-  supabase: ServerClient,
+  supabase: SupabaseClient,
   event: AttendanceEventRow,
   title: string,
 ): Promise<AttendanceRecordView> {
@@ -43,7 +41,7 @@ async function toRecordView(
 }
 
 export async function loadAttendanceRecordView(
-  supabase: ServerClient,
+  supabase: SupabaseClient,
   applicationId: string,
   kind: AttendanceKind,
   workDate: string,
@@ -64,7 +62,7 @@ export async function loadAttendanceRecordView(
 }
 
 export async function loadAttendanceRecordsForApplication(
-  supabase: ServerClient,
+  supabase: SupabaseClient,
   applicationId: string,
 ): Promise<AttendanceRecordView[]> {
   const { data: events } = await supabase
@@ -92,7 +90,7 @@ export async function loadAttendanceRecordsForApplication(
 
 /** Records keyed by application_id for business applicant cards. */
 export async function loadAttendanceRecordsByApplication(
-  supabase: ServerClient,
+  supabase: SupabaseClient,
   applicationIds: string[],
 ): Promise<Map<string, AttendanceRecordView[]>> {
   const map = new Map<string, AttendanceRecordView[]>();

@@ -1,13 +1,22 @@
+"use client";
+
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { JobCard } from "@/components/job-card";
 import { JobLifecycleSummaryBar } from "@/components/lifecycle-tracker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { summarizeJobLifecycles } from "@/lib/application-lifecycle";
-import { getSessionProfile } from "@/lib/auth";
-import { loadApplicationLifecycles } from "@/lib/load-application-lifecycles";
-import { createClient } from "@/lib/supabase/server";
 import { EmptyState } from "@/components/feedback/empty-state";
+import { PageLoading } from "@/components/page-loading";
+import {
+  summarizeJobLifecycles,
+  type ApplicationLifecycle,
+} from "@/lib/application-lifecycle";
+import { useSessionProfile } from "@/hooks/use-session-profile";
+import { useRouter } from "@/hooks/use-app-router";
+import { loadApplicationLifecycles } from "@/lib/load-application-lifecycles";
+import { createClient } from "@/lib/supabase/client";
 import { jobStatusLabel, jobStatusVariant } from "@/lib/status";
 import type { ApplicationStatus, Job } from "@/types/database";
 
@@ -17,13 +26,106 @@ type AppRow = {
   status: ApplicationStatus;
 };
 
-export default async function BusinessJobsPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ tab?: string }>;
-}) {
-  const { tab = "all" } = await searchParams;
-  const { user, business } = await getSessionProfile();
+export default function BusinessJobsPage() {
+  return (
+    <Suspense fallback={<PageLoading />}>
+      <BusinessJobsContent />
+    </Suspense>
+  );
+}
+
+function BusinessJobsContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const tab = searchParams.get("tab") ?? "all";
+  const {
+    user,
+    business,
+    loading: sessionLoading,
+  } = useSessionProfile();
+  const [list, setList] = useState<Job[]>([]);
+  const [apps, setApps] = useState<AppRow[]>([]);
+  const [lifecycles, setLifecycles] = useState<
+    Map<string, ApplicationLifecycle>
+  >(new Map());
+  const [appliedCountByJob, setAppliedCountByJob] = useState<
+    Map<string, number>
+  >(new Map());
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (sessionLoading) return;
+    if (!user) {
+      router.replace("/login");
+      return;
+    }
+
+    if (!business) return;
+
+    let cancelled = false;
+
+    async function load() {
+      const supabase = createClient();
+      const { data: jobs } = await supabase
+        .from("jobs")
+        .select("*")
+        .eq("business_id", business!.id)
+        .order("created_at", { ascending: false });
+
+      const nextList = (jobs ?? []) as Job[];
+      const jobIds = nextList.map((job) => job.id);
+
+      const { data: appsData } = jobIds.length
+        ? await supabase
+            .from("applications")
+            .select("id, job_id, status")
+            .in("job_id", jobIds)
+        : { data: [] };
+
+      const nextApps = (appsData ?? []) as AppRow[];
+      const jobsById = new Map(nextList.map((job) => [job.id, job]));
+      const acceptedCountByJob = new Map<string, number>();
+      const nextAppliedCountByJob = new Map<string, number>();
+      for (const app of nextApps) {
+        if (app.status === "accepted") {
+          acceptedCountByJob.set(
+            app.job_id,
+            (acceptedCountByJob.get(app.job_id) ?? 0) + 1,
+          );
+        }
+        if (app.status === "applied") {
+          nextAppliedCountByJob.set(
+            app.job_id,
+            (nextAppliedCountByJob.get(app.job_id) ?? 0) + 1,
+          );
+        }
+      }
+
+      const nextLifecycles = await loadApplicationLifecycles(supabase, {
+        applications: nextApps,
+        jobsById,
+        actor: "business",
+        actorUserId: user!.id,
+        acceptedCountByJob,
+      });
+
+      if (cancelled) return;
+      setList(nextList);
+      setApps(nextApps);
+      setLifecycles(nextLifecycles);
+      setAppliedCountByJob(nextAppliedCountByJob);
+      setLoading(false);
+    }
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionLoading, user, business, router]);
+
+  if (sessionLoading) {
+    return <PageLoading />;
+  }
 
   if (!business) {
     return (
@@ -39,49 +141,9 @@ export default async function BusinessJobsPage({
     );
   }
 
-  const supabase = await createClient();
-  const { data: jobs } = await supabase
-    .from("jobs")
-    .select("*")
-    .eq("business_id", business.id)
-    .order("created_at", { ascending: false });
-
-  const list = (jobs ?? []) as Job[];
-  const jobIds = list.map((job) => job.id);
-
-  const { data: appsData } = jobIds.length
-    ? await supabase
-        .from("applications")
-        .select("id, job_id, status")
-        .in("job_id", jobIds)
-    : { data: [] };
-
-  const apps = (appsData ?? []) as AppRow[];
-  const jobsById = new Map(list.map((job) => [job.id, job]));
-  const acceptedCountByJob = new Map<string, number>();
-  const appliedCountByJob = new Map<string, number>();
-  for (const app of apps) {
-    if (app.status === "accepted") {
-      acceptedCountByJob.set(
-        app.job_id,
-        (acceptedCountByJob.get(app.job_id) ?? 0) + 1,
-      );
-    }
-    if (app.status === "applied") {
-      appliedCountByJob.set(
-        app.job_id,
-        (appliedCountByJob.get(app.job_id) ?? 0) + 1,
-      );
-    }
+  if (loading) {
+    return <PageLoading />;
   }
-
-  const lifecycles = await loadApplicationLifecycles(supabase, {
-    applications: apps,
-    jobsById,
-    actor: "business",
-    actorUserId: user!.id,
-    acceptedCountByJob,
-  });
 
   const filtered =
     tab === "all"
@@ -114,18 +176,20 @@ export default async function BusinessJobsPage({
       </div>
 
       <div className="mt-5 flex gap-2 overflow-x-auto hide-scrollbar">
-        {["all", "active", "fully_staffed", "completed", "cancelled"].map((t) => (
-          <Badge
-            key={t}
-            variant={tab === t ? "default" : "outline"}
-            className="shrink-0 capitalize"
-            asChild
-          >
-            <Link href={`/business/jobs?tab=${t}`}>
-              {t.replace("_", " ")}
-            </Link>
-          </Badge>
-        ))}
+        {["all", "active", "fully_staffed", "completed", "cancelled"].map(
+          (t) => (
+            <Badge
+              key={t}
+              variant={tab === t ? "default" : "outline"}
+              className="shrink-0 capitalize"
+              asChild
+            >
+              <Link href={`/business/jobs?tab=${t}`}>
+                {t.replace("_", " ")}
+              </Link>
+            </Badge>
+          ),
+        )}
       </div>
 
       <div className="mt-5 space-y-3">

@@ -1,7 +1,16 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import { ROLE_READY_COOKIE } from "@/lib/role-session";
+import {
+  ACTIVE_MODE_COOKIE,
+  ROLE_READY_COOKIE,
+  type SessionMode,
+} from "@/lib/role-session";
 import { getSupabasePublishableKey, getSupabaseUrl } from "@/lib/supabase/env";
+
+function readModeCookie(request: NextRequest): SessionMode | null {
+  const value = request.cookies.get(ACTIVE_MODE_COOKIE)?.value;
+  return value === "business" || value === "freelancer" ? value : null;
+}
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
@@ -57,14 +66,38 @@ export async function updateSession(request: NextRequest) {
   }
 
   const roleReady = request.cookies.get(ROLE_READY_COOKIE)?.value === "1";
+  const modeCookie = readModeCookie(request);
+  const needsProfileQuery =
+    !roleReady ||
+    !modeCookie ||
+    path === "/login" ||
+    path === "/onboarding" ||
+    path === "/continue" ||
+    path === "/";
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("onboarding_complete, active_mode")
-    .eq("id", user.id)
-    .maybeSingle();
+  let onboarded = true;
+  let activeMode: SessionMode = modeCookie ?? "freelancer";
 
-  const onboarded = !!profile?.onboarding_complete;
+  if (needsProfileQuery) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("onboarding_complete, active_mode")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    onboarded = !!profile?.onboarding_complete;
+    activeMode =
+      profile?.active_mode === "business" ? "business" : "freelancer";
+
+    // Keep the mode cookie warm when we already paid for the query.
+    if (roleReady && modeCookie !== activeMode) {
+      supabaseResponse.cookies.set(ACTIVE_MODE_COOKIE, activeMode, {
+        path: "/",
+        sameSite: "lax",
+      });
+    }
+  }
+
   const url = request.nextUrl.clone();
 
   // Fresh login always lands on role gate — profile setup is deferred.
@@ -82,15 +115,14 @@ export async function updateSession(request: NextRequest) {
 
   // Role already picked this session — skip the gate.
   if (roleReady && path === "/continue") {
-    url.pathname =
-      profile?.active_mode === "business" ? "/business" : "/freelancer";
+    url.pathname = activeMode === "business" ? "/business" : "/freelancer";
     return NextResponse.redirect(url);
   }
 
   // Keep home segments aligned with persisted mode so soft nav cannot show
   // a business page under a freelancer shell (or the reverse).
   if (roleReady) {
-    const isBusiness = profile?.active_mode === "business";
+    const isBusiness = activeMode === "business";
     const onBusiness = path === "/business" || path.startsWith("/business/");
     const onFreelancer =
       path === "/freelancer" || path.startsWith("/freelancer/");
@@ -117,8 +149,7 @@ export async function updateSession(request: NextRequest) {
   }
 
   if (path === "/") {
-    url.pathname =
-      profile?.active_mode === "business" ? "/business" : "/freelancer";
+    url.pathname = activeMode === "business" ? "/business" : "/freelancer";
     return NextResponse.redirect(url);
   }
 

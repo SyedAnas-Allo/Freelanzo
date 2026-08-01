@@ -1,47 +1,109 @@
-import { notFound, redirect } from "next/navigation";
+"use client";
+
+import { Suspense, useEffect, useState } from "react";
+import Link from "next/link";
+import { useParams, useSearchParams } from "next/navigation";
+import { useRouter } from "@/hooks/use-app-router";
 import { Briefcase } from "lucide-react";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { PageContent } from "@/components/layout/page-content";
 import { PageHeader } from "@/components/layout/page-header";
+import { PageLoading } from "@/components/page-loading";
 import { JobExperienceListItem } from "@/features/jobs/components/job-experience-list-item";
-import { getSessionProfile } from "@/lib/auth";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/client";
 import type { Job, Profile } from "@/types/database";
 
-export default async function ApplicantExperiencePage({
-  params,
-  searchParams,
-}: {
-  params: Promise<{ id: string }>;
-  searchParams: Promise<{ job?: string }>;
-}) {
-  const { id } = await params;
-  const { job: jobId } = await searchParams;
-  const { business } = await getSessionProfile();
-  if (!business) redirect("/business/setup");
+type ExperienceRow = {
+  id: string;
+  job: Job | null;
+};
 
-  const supabase = await createClient();
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("id, full_name")
-    .eq("id", id)
-    .maybeSingle();
-  if (!profile) notFound();
+export default function ApplicantExperiencePage() {
+  return (
+    <Suspense fallback={<PageLoading />}>
+      <ApplicantExperienceInner />
+    </Suspense>
+  );
+}
 
-  const p = profile as Pick<Profile, "id" | "full_name">;
+function ApplicantExperienceInner() {
+  const router = useRouter();
+  const params = useParams<{ id: string }>();
+  const searchParams = useSearchParams();
+  const id = params.id;
+  const jobId = searchParams.get("job");
 
-  const { data: apps } = await supabase
-    .from("applications")
-    .select("id, status, created_at, jobs(*)")
-    .eq("freelancer_id", id)
-    .eq("status", "accepted")
-    .order("created_at", { ascending: false })
-    .limit(20);
+  const [loading, setLoading] = useState(true);
+  const [missing, setMissing] = useState(false);
+  const [name, setName] = useState("Freelancer");
+  const [rows, setRows] = useState<ExperienceRow[]>([]);
 
-  const rows = (apps ?? []).map((a) => ({
-    id: a.id,
-    job: a.jobs as unknown as Job | null,
-  }));
+  useEffect(() => {
+    async function load() {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        router.push("/login");
+        return;
+      }
+
+      const { data: business } = await supabase
+        .from("business_profiles")
+        .select("id")
+        .eq("owner_id", user.id)
+        .maybeSingle();
+      if (!business) {
+        router.push("/business/setup");
+        return;
+      }
+
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("id, full_name")
+        .eq("id", id)
+        .maybeSingle();
+      if (!profile) {
+        setMissing(true);
+        setLoading(false);
+        return;
+      }
+
+      const p = profile as Pick<Profile, "id" | "full_name">;
+      setName(p.full_name || "Freelancer");
+
+      const { data: apps } = await supabase
+        .from("applications")
+        .select("id, status, created_at, jobs(*)")
+        .eq("freelancer_id", id)
+        .eq("status", "accepted")
+        .order("created_at", { ascending: false })
+        .limit(20);
+
+      setRows(
+        (apps ?? []).map((a) => ({
+          id: a.id,
+          job: a.jobs as unknown as Job | null,
+        })),
+      );
+      setLoading(false);
+    }
+    void load();
+  }, [id, router]);
+
+  if (loading) return <PageLoading />;
+
+  if (missing) {
+    return (
+      <div className="px-4 py-10 text-center">
+        <p className="font-bold">Freelancer not found</p>
+        <Link href="/business" className="mt-4 inline-block text-sm font-bold text-primary">
+          Back
+        </Link>
+      </div>
+    );
+  }
 
   const backHref = `/business/freelancers/${id}${jobId ? `?job=${jobId}` : ""}`;
 
@@ -50,7 +112,7 @@ export default async function ApplicantExperiencePage({
       <PageHeader
         backHref={backHref}
         title="Work History"
-        description={`${p.full_name || "Freelancer"}’s Freelanzo gigs`}
+        description={`${name}’s Freelanzo gigs`}
       />
 
       {rows.length === 0 ? (

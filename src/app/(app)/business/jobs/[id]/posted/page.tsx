@@ -1,5 +1,8 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { useParams } from "next/navigation";
 import {
   Banknote,
   CheckCircle2,
@@ -11,28 +14,43 @@ import {
 import { NextStepsList } from "@/components/feedback/next-steps-list";
 import { SuccessScreen } from "@/components/feedback/success-screen";
 import { InfoCallout } from "@/components/info-callout";
+import { PageLoading } from "@/components/page-loading";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { JobCategoryIcon } from "@/features/jobs/components/job-category-icon";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/client";
 import { formatPay } from "@/lib/utils";
 import type { Job } from "@/types/database";
 
-export default async function JobPostedPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
-  const { id } = await params;
-  const supabase = await createClient();
-  const { data: job } = await supabase
-    .from("jobs")
-    .select("*")
-    .eq("id", id)
-    .maybeSingle();
-  if (!job) notFound();
+export default function JobPostedPage() {
+  const { id } = useParams<{ id: string }>();
+  const [loading, setLoading] = useState(true);
+  const [job, setJob] = useState<Job | null>(null);
 
-  const typed = job as Job;
+  useEffect(() => {
+    async function load() {
+      const supabase = createClient();
+      const { data: jobRow } = await supabase
+        .from("jobs")
+        .select("*")
+        .eq("id", id)
+        .maybeSingle();
+      setJob((jobRow as Job | null) ?? null);
+      setLoading(false);
+    }
+    void load();
+  }, [id]);
+
+  if (loading) return <PageLoading />;
+  if (!job) {
+    return (
+      <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+        Not found
+      </div>
+    );
+  }
+
+  const typed = job;
 
   return (
     <div className="flex min-h-[70dvh] flex-col px-4 py-8">

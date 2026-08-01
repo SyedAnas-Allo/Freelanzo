@@ -1,59 +1,96 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import { Wallet } from "lucide-react";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { PageContent } from "@/components/layout/page-content";
 import { PageHeader } from "@/components/layout/page-header";
+import { PageLoading } from "@/components/page-loading";
 import { SectionHeader } from "@/components/layout/section-header";
 import { StatCard } from "@/components/shared/stat-card";
 import { EarningsTransactionListItem } from "@/features/payments/components/earnings-transaction-list-item";
-import { getSessionProfile } from "@/lib/auth";
-import { createClient } from "@/lib/supabase/server";
+import { useSessionProfile } from "@/hooks/use-session-profile";
+import { useRouter } from "@/hooks/use-app-router";
+import { createClient } from "@/lib/supabase/client";
 import { formatPay } from "@/lib/utils";
 import type { Job, Payment } from "@/types/database";
 
-export default async function EarningsPage() {
-  const { user } = await getSessionProfile();
-  const supabase = await createClient();
+export default function EarningsPage() {
+  const router = useRouter();
+  const { user, loading: sessionLoading } = useSessionProfile();
+  const [payList, setPayList] = useState<Payment[]>([]);
+  const [jobByApp, setJobByApp] = useState<Map<string, Job>>(new Map());
+  const [total, setTotal] = useState(0);
+  const [thisMonth, setThisMonth] = useState(0);
+  const [lastMonth, setLastMonth] = useState(0);
+  const [loading, setLoading] = useState(true);
 
-  const { data: apps } = await supabase
-    .from("applications")
-    .select("id, job_id, jobs(*)")
-    .eq("freelancer_id", user!.id)
-    .eq("status", "accepted");
+  useEffect(() => {
+    if (sessionLoading) return;
+    if (!user) {
+      router.replace("/login");
+      return;
+    }
 
-  const appIds = (apps ?? []).map((a) => a.id);
-  const { data: payments } = appIds.length
-    ? await supabase
-        .from("payments")
-        .select("*")
-        .in("application_id", appIds)
-        .eq("status", "confirmed")
-    : { data: [] };
+    async function load() {
+      const supabase = createClient();
 
-  const payList = (payments ?? []) as Payment[];
-  const total = payList.reduce((s, p) => s + (p.amount ?? 0), 0);
+      const { data: apps } = await supabase
+        .from("applications")
+        .select("id, job_id, jobs(*)")
+        .eq("freelancer_id", user!.id)
+        .eq("status", "accepted");
 
-  const now = new Date();
-  const thisMonth = payList
-    .filter((p) => {
-      const d = new Date(p.updated_at);
-      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-    })
-    .reduce((s, p) => s + (p.amount ?? 0), 0);
+      const appIds = (apps ?? []).map((a) => a.id);
+      const { data: payments } = appIds.length
+        ? await supabase
+            .from("payments")
+            .select("*")
+            .in("application_id", appIds)
+            .eq("status", "confirmed")
+        : { data: [] };
 
-  const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  const lastMonth = payList
-    .filter((p) => {
-      const d = new Date(p.updated_at);
-      return (
-        d.getMonth() === lastMonthDate.getMonth() &&
-        d.getFullYear() === lastMonthDate.getFullYear()
+      const nextPayList = (payments ?? []) as Payment[];
+      const nextTotal = nextPayList.reduce((s, p) => s + (p.amount ?? 0), 0);
+
+      const now = new Date();
+      const nextThisMonth = nextPayList
+        .filter((p) => {
+          const d = new Date(p.updated_at);
+          return (
+            d.getMonth() === now.getMonth() &&
+            d.getFullYear() === now.getFullYear()
+          );
+        })
+        .reduce((s, p) => s + (p.amount ?? 0), 0);
+
+      const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const nextLastMonth = nextPayList
+        .filter((p) => {
+          const d = new Date(p.updated_at);
+          return (
+            d.getMonth() === lastMonthDate.getMonth() &&
+            d.getFullYear() === lastMonthDate.getFullYear()
+          );
+        })
+        .reduce((s, p) => s + (p.amount ?? 0), 0);
+
+      setPayList(nextPayList);
+      setTotal(nextTotal);
+      setThisMonth(nextThisMonth);
+      setLastMonth(nextLastMonth);
+      setJobByApp(
+        new Map((apps ?? []).map((a) => [a.id, a.jobs as unknown as Job])),
       );
-    })
-    .reduce((s, p) => s + (p.amount ?? 0), 0);
+      setLoading(false);
+    }
 
-  const jobByApp = new Map(
-    (apps ?? []).map((a) => [a.id, a.jobs as unknown as Job]),
-  );
+    void load();
+  }, [sessionLoading, user, router]);
+
+  if (sessionLoading || loading) {
+    return <PageLoading />;
+  }
 
   return (
     <PageContent>

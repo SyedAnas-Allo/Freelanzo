@@ -1,5 +1,8 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { useParams } from "next/navigation";
 import {
   ArrowRight,
   BadgeCheck,
@@ -10,13 +13,15 @@ import {
 } from "lucide-react";
 import { NextStepsList } from "@/components/feedback/next-steps-list";
 import { SuccessScreen } from "@/components/feedback/success-screen";
+import { PageLoading } from "@/components/page-loading";
 import { PaymentResponsibilityCallout } from "@/components/payment-responsibility-callout";
 import { ProfileCompletionCallout } from "@/components/profile-completion-callout";
 import { Button } from "@/components/ui/button";
 import { JobCategoryIcon } from "@/features/jobs/components/job-category-icon";
-import { getSessionProfile } from "@/lib/auth";
+import { useRouter } from "@/hooks/use-app-router";
+import { fetchSessionProfile } from "@/hooks/use-session-profile";
 import { getProfileGaps } from "@/lib/profile-eligibility";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/client";
 import {
   formatPay,
   formatTime,
@@ -24,29 +29,51 @@ import {
   jobEngagementTotal,
 } from "@/lib/utils";
 import { formatWorkDatesLabel, jobWorkDates } from "@/lib/work-dates";
-import type { Job } from "@/types/database";
+import type { Job, Profile } from "@/types/database";
 
-export default async function ApplicationSuccessPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
-  const { id } = await params;
-  const { user, profile } = await getSessionProfile();
-  if (!user) redirect("/login");
+type JobWithBusiness = Job & {
+  business_profiles: { business_name: string; verified: boolean } | null;
+};
 
-  const supabase = await createClient();
-  const { data: job } = await supabase
-    .from("jobs")
-    .select("*, business_profiles(business_name, verified)")
-    .eq("id", id)
-    .maybeSingle();
-  if (!job) notFound();
+export default function ApplicationSuccessPage() {
+  const { id } = useParams<{ id: string }>();
+  const router = useRouter();
+  const [loading, setLoading] = useState(true);
+  const [job, setJob] = useState<JobWithBusiness | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
 
-  const typed = job as Job & {
-    business_profiles: { business_name: string; verified: boolean } | null;
-  };
+  useEffect(() => {
+    async function load() {
+      const session = await fetchSessionProfile();
+      if (!session.user) {
+        router.replace("/login");
+        return;
+      }
 
+      const supabase = createClient();
+      const { data: jobRow } = await supabase
+        .from("jobs")
+        .select("*, business_profiles(business_name, verified)")
+        .eq("id", id)
+        .maybeSingle();
+
+      setProfile(session.profile);
+      setJob((jobRow as JobWithBusiness | null) ?? null);
+      setLoading(false);
+    }
+    void load();
+  }, [id, router]);
+
+  if (loading) return <PageLoading />;
+  if (!job) {
+    return (
+      <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+        Not found
+      </div>
+    );
+  }
+
+  const typed = job;
   const distance =
     profile?.lat !== null &&
     profile?.lat !== undefined &&

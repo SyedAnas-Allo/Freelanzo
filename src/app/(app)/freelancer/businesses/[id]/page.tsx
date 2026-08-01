@@ -1,68 +1,150 @@
+"use client";
+
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
+import { useRouter } from "@/hooks/use-app-router";
 import { Briefcase } from "lucide-react";
 import { BusinessProfileView } from "@/components/business-profile-view";
 import { PageBack } from "@/components/page-back";
+import { PageLoading } from "@/components/page-loading";
 import { ReportMenuButton } from "@/components/report-menu-button";
 import { ReviewListItem } from "@/components/review-list-item";
 import { SettingsGroup, SettingsRow } from "@/components/settings-row";
-import { getSessionProfile } from "@/lib/auth";
 import { loadBusinessStats } from "@/lib/load-business-stats";
-import { createClient } from "@/lib/supabase/server";
+import {
+  type BusinessProfileStats,
+} from "@/lib/profile-stats";
+import { createClient } from "@/lib/supabase/client";
 import type { BusinessProfile, Profile, Rating } from "@/types/database";
 
-export default async function BusinessPublicProfilePage({
-  params,
-  searchParams,
-}: {
-  params: Promise<{ id: string }>;
-  searchParams: Promise<{ from?: string; job?: string }>;
-}) {
-  const { id } = await params;
-  const { from, job: jobId } = await searchParams;
-  const { user } = await getSessionProfile();
-  if (!user) redirect("/login");
+const EMPTY_STATS: BusinessProfileStats = {
+  jobsPosted: 0,
+  jobsCompleted: 0,
+  jobsCancelled: 0,
+  freelancersHired: 0,
+  paymentRate: 100,
+  cancelRate: 0,
+  reliability: 80,
+  avgRating: null,
+  reviewCount: 0,
+  activeGigs: 0,
+  categories: [],
+};
 
-  const supabase = await createClient();
-  const { data: business } = await supabase
-    .from("business_profiles")
-    .select("*")
-    .eq("id", id)
-    .maybeSingle();
-  if (!business) notFound();
-
-  const biz = business as BusinessProfile;
-  const stats = await loadBusinessStats(supabase, biz.id, biz.owner_id);
-
-  const { data: owner } = await supabase
-    .from("profiles")
-    .select("area, city")
-    .eq("id", biz.owner_id)
-    .maybeSingle();
-  const ownerProfile = owner as Pick<Profile, "area" | "city"> | null;
-  const location =
-    [ownerProfile?.area, ownerProfile?.city].filter(Boolean).join(", ") ||
-    biz.address;
-
-  const { data: ratings } = await supabase
-    .from("ratings")
-    .select("*")
-    .eq("to_user_id", biz.owner_id)
-    .order("created_at", { ascending: false })
-    .limit(5);
-  const recentRatings = (ratings ?? []) as Rating[];
-  const reviewerIds = [...new Set(recentRatings.map((r) => r.from_user_id))];
-  const { data: reviewers } = reviewerIds.length
-    ? await supabase
-        .from("profiles")
-        .select("id, full_name, photo_url")
-        .in("id", reviewerIds)
-    : { data: [] };
-  const reviewerMap = new Map(
-    ((reviewers ?? []) as Pick<Profile, "id" | "full_name" | "photo_url">[]).map(
-      (p) => [p.id, p],
-    ),
+export default function BusinessPublicProfilePage() {
+  return (
+    <Suspense fallback={<PageLoading />}>
+      <BusinessPublicProfileInner />
+    </Suspense>
   );
+}
+
+function BusinessPublicProfileInner() {
+  const router = useRouter();
+  const params = useParams<{ id: string }>();
+  const searchParams = useSearchParams();
+  const id = params.id;
+  const from = searchParams.get("from");
+  const jobId = searchParams.get("job");
+
+  const [loading, setLoading] = useState(true);
+  const [missing, setMissing] = useState(false);
+  const [biz, setBiz] = useState<BusinessProfile | null>(null);
+  const [location, setLocation] = useState("");
+  const [stats, setStats] = useState<BusinessProfileStats>(EMPTY_STATS);
+  const [recentRatings, setRecentRatings] = useState<Rating[]>([]);
+  const [reviewerMap, setReviewerMap] = useState<
+    Map<string, Pick<Profile, "id" | "full_name" | "photo_url">>
+  >(() => new Map());
+
+  useEffect(() => {
+    async function load() {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        router.push("/login");
+        return;
+      }
+
+      const { data: business } = await supabase
+        .from("business_profiles")
+        .select("*")
+        .eq("id", id)
+        .maybeSingle();
+      if (!business) {
+        setMissing(true);
+        setLoading(false);
+        return;
+      }
+
+      const nextBiz = business as BusinessProfile;
+      setBiz(nextBiz);
+
+      const nextStats = await loadBusinessStats(
+        supabase,
+        nextBiz.id,
+        nextBiz.owner_id,
+      );
+      setStats(nextStats);
+
+      const { data: owner } = await supabase
+        .from("profiles")
+        .select("area, city")
+        .eq("id", nextBiz.owner_id)
+        .maybeSingle();
+      const ownerProfile = owner as Pick<Profile, "area" | "city"> | null;
+      setLocation(
+        [ownerProfile?.area, ownerProfile?.city].filter(Boolean).join(", ") ||
+          nextBiz.address ||
+          "",
+      );
+
+      const { data: ratings } = await supabase
+        .from("ratings")
+        .select("*")
+        .eq("to_user_id", nextBiz.owner_id)
+        .order("created_at", { ascending: false })
+        .limit(5);
+      const recent = (ratings ?? []) as Rating[];
+      setRecentRatings(recent);
+
+      const reviewerIds = [...new Set(recent.map((r) => r.from_user_id))];
+      const { data: reviewers } = reviewerIds.length
+        ? await supabase
+            .from("profiles")
+            .select("id, full_name, photo_url")
+            .in("id", reviewerIds)
+        : { data: [] };
+      setReviewerMap(
+        new Map(
+          (
+            (reviewers ?? []) as Pick<
+              Profile,
+              "id" | "full_name" | "photo_url"
+            >[]
+          ).map((p) => [p.id, p]),
+        ),
+      );
+      setLoading(false);
+    }
+    void load();
+  }, [id, router]);
+
+  if (loading) return <PageLoading />;
+
+  if (missing || !biz) {
+    return (
+      <div className="px-4 py-10 text-center">
+        <p className="font-bold">Business not found</p>
+        <Link href="/freelancer" className="mt-4 inline-block text-sm font-bold text-primary">
+          Back
+        </Link>
+      </div>
+    );
+  }
 
   const backHref =
     from && from.startsWith("/") && !from.startsWith("//")
@@ -94,9 +176,7 @@ export default async function BusinessPublicProfilePage({
             {recentRatings.length > 0 ? (
               <section className="rounded-2xl border border-border/70 bg-card px-3">
                 <div className="flex items-center justify-between border-b border-border/50 py-3">
-                  <h2 className="text-sm font-extrabold">
-                    Recent Reviews
-                  </h2>
+                  <h2 className="text-sm font-extrabold">Recent Reviews</h2>
                   <Link
                     href={`/reviews/${biz.owner_id}?from=${encodeURIComponent(`/freelancer/businesses/${biz.id}`)}`}
                     className="text-xs font-bold text-primary"
