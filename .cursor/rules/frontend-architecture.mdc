@@ -1,0 +1,18 @@
+---
+description: Keep frontend files cohesive and shared UI discoverable
+globs: "src/**/*.{ts,tsx}"
+alwaysApply: false
+---
+
+# Frontend architecture
+
+- Keep route `page.tsx` files focused on routing, data loading, and composing one page view.
+- Keep one primary exported component, hook, class, or service per file. Small private helpers may stay when they only support that primary export.
+- Treat 350 lines as the maximum for handwritten source. Split by responsibility before exceeding it. Generated files, schema/type declarations, fixtures, and migration output are exempt.
+- Put reusable visual primitives in `src/components/ui`.
+- Put reusable form and layout compositions in semantic folders under `src/components`.
+- Put domain-specific components, hooks, queries, and helpers in `src/features/<feature>`.
+- Colocate route-only implementation in a route `_components`, `_hooks`, or `_lib` folder.
+- Extract a hook when client state, effects, validation, or mutations obscure the rendered structure.
+- Share code only after it has a stable semantic purpose; do not create generic wrappers that merely rename a `div`.
+- Import modules directly from their file. Avoid barrel files because they hide ownership and can expand client bundles.

@@ -1,6 +1,6 @@
 # Freelanzo
 
-Mobile-first marketplace for blue-collar / event part-time jobs in Bangalore.
+Mobile-first marketplace for blue-collar / event part-time jobs.
 
 Google sign-in → dual mode → post/discover/apply → hire → OTP attendance → payment confirm/dispute → ratings, job group chat, SOS/Safety, posting fee, reliability, earnings, job history, reviews.
 
