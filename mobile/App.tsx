@@ -1,6 +1,12 @@
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BackHandler, Platform, StyleSheet, View } from "react-native";
+import {
+  ActivityIndicator,
+  BackHandler,
+  Platform,
+  StyleSheet,
+  View,
+} from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import {
   WebView,
@@ -24,9 +30,13 @@ export default function App() {
   const webRef = useRef<WebView>(null);
   const oauthLock = useRef(false);
   const handledAuthUrl = useRef<string | null>(null);
+  const booted = useRef(false);
   const [uri, setUri] = useState(WEB_URL);
   const [canGoBack, setCanGoBack] = useState(false);
-  const [loading, setLoading] = useState(true);
+  /** Full splash — cold start only. */
+  const [showSplash, setShowSplash] = useState(true);
+  /** Thin top bar for later navigations — never covers the page. */
+  const [pageLoading, setPageLoading] = useState(false);
 
   const appReturn = useMemo(() => getAppReturnDeepLink(), []);
 
@@ -41,6 +51,18 @@ export default function App() {
     `;
   }, [appReturn]);
 
+  const dismissSplash = useCallback(() => {
+    booted.current = true;
+    setShowSplash(false);
+  }, []);
+
+  // Never leave the splash stuck if a load hangs.
+  useEffect(() => {
+    if (!showSplash) return;
+    const t = setTimeout(dismissSplash, 6000);
+    return () => clearTimeout(t);
+  }, [showSplash, dismissSplash]);
+
   const applyAuthReturn = useCallback((rawUrl: string) => {
     try {
       const next = sessionDeepLinkToWebUrl(rawUrl);
@@ -48,33 +70,38 @@ export default function App() {
       if (handledAuthUrl.current === next) return true;
       handledAuthUrl.current = next;
       oauthLock.current = false;
+      // Keep the current page visible; only a thin progress bar.
+      dismissSplash();
       setUri(next);
-      setLoading(true);
+      setPageLoading(true);
       return true;
     } catch (e) {
       console.warn("applyAuthReturn failed", e);
       return false;
     }
-  }, []);
+  }, [dismissSplash]);
 
-  const finishOAuth = useCallback(async (oauthUrl: string) => {
-    if (oauthLock.current) return;
-    oauthLock.current = true;
-    handledAuthUrl.current = null;
-    try {
-      const next = await openOAuthInSystemBrowser(oauthUrl);
-      // Linking may have already applied the same URL while AuthSession was open.
-      if (next && handledAuthUrl.current !== next) {
-        handledAuthUrl.current = next;
-        setUri(next);
-        setLoading(true);
+  const finishOAuth = useCallback(
+    async (oauthUrl: string) => {
+      if (oauthLock.current) return;
+      oauthLock.current = true;
+      handledAuthUrl.current = null;
+      try {
+        const next = await openOAuthInSystemBrowser(oauthUrl);
+        if (next && handledAuthUrl.current !== next) {
+          handledAuthUrl.current = next;
+          dismissSplash();
+          setUri(next);
+          setPageLoading(true);
+        }
+      } catch (e) {
+        console.warn("finishOAuth failed", e);
+      } finally {
+        oauthLock.current = false;
       }
-    } catch (e) {
-      console.warn("finishOAuth failed", e);
-    } finally {
-      oauthLock.current = false;
-    }
-  }, []);
+    },
+    [dismissSplash],
+  );
 
   useEffect(() => {
     void WebBrowser.warmUpAsync().catch(() => undefined);
@@ -169,10 +196,16 @@ export default function App() {
             onShouldStartLoadWithRequest={handleShouldStartLoad}
             onNavigationStateChange={(nav: WebViewNavigation) => {
               setCanGoBack(nav.canGoBack);
+              if (!nav.loading) {
+                setPageLoading(false);
+                if (!booted.current) dismissSplash();
+              }
             }}
             onMessage={handleMessage}
             onError={(e) => {
               console.warn("WebView error", e.nativeEvent);
+              setPageLoading(false);
+              dismissSplash();
             }}
             geolocationEnabled
             mediaCapturePermissionGrantType="grant"
@@ -184,12 +217,23 @@ export default function App() {
             javaScriptEnabled
             setSupportMultipleWindows={false}
             originWhitelist={["https://*", "http://*"]}
-            startInLoadingState
-            onLoadStart={() => setLoading(true)}
-            onLoadEnd={() => setLoading(false)}
+            onLoadStart={() => {
+              if (booted.current) setPageLoading(true);
+            }}
+            onLoadEnd={() => {
+              setPageLoading(false);
+              dismissSplash();
+            }}
             pullToRefreshEnabled={Platform.OS === "android"}
           />
-          {loading ? <SplashScreen /> : null}
+
+          {pageLoading && !showSplash ? (
+            <View style={styles.progressTrack} pointerEvents="none">
+              <View style={styles.progressBar} />
+            </View>
+          ) : null}
+
+          {showSplash ? <SplashScreen /> : null}
         </View>
       </SafeAreaView>
     </SafeAreaProvider>
@@ -198,4 +242,19 @@ export default function App() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: BRAND.background },
+  progressTrack: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 2,
+    backgroundColor: "transparent",
+    zIndex: 5,
+  },
+  progressBar: {
+    height: 2,
+    width: "40%",
+    backgroundColor: BRAND.primary,
+    borderRadius: 1,
+  },
 });
