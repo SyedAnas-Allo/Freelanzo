@@ -18,10 +18,19 @@ export default function LoginPage() {
     setLoading(true);
     clearRoleReadyCookie();
     const supabase = createClient();
+    // Native WebView shell injects the production /auth/callback URL so Google
+    // OAuth never falls back to a localhost Site URL.
+    const nativeRedirect = (
+      window as Window & { __FREELANZO_OAUTH_REDIRECT__?: string }
+    ).__FREELANZO_OAUTH_REDIRECT__;
+    const redirectTo =
+      typeof nativeRedirect === "string" && nativeRedirect.length > 0
+        ? nativeRedirect
+        : `${window.location.origin}/auth/callback`;
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
+        redirectTo,
       },
     });
     if (error) {

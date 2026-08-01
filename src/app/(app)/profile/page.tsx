@@ -192,7 +192,7 @@ export default function ProfilePage() {
             onClick={referFreelanzo}
             icon={<Share2 className="size-4" />}
             label="Refer Freelanzo"
-            description="Share freelanzo.co.id with friends"
+            description="Share freelanzo-three.vercel.app with friends"
           />
           <SettingsRow
             href="/feedback"
@@ -291,7 +291,7 @@ export default function ProfilePage() {
           onClick={referFreelanzo}
           icon={<Share2 className="size-4" />}
           label="Refer Freelanzo"
-          description="Share freelanzo.co.id with friends"
+          description="Share freelanzo-three.vercel.app with friends"
         />
         <SettingsRow
           href="/feedback"

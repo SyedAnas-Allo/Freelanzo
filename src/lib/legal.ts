@@ -74,7 +74,7 @@ export const LEGAL_DOCUMENTS: Record<LegalDocumentId, LegalDocument> = {
         heading: "Changes",
         paragraphs: [
           "We may update these Terms. Continued use after an update means you accept the revised Terms. The “Last updated” date above shows the latest version.",
-          "Questions: contact support through the app or visit freelanzo.co.id.",
+          "Questions: contact support through the app or visit freelanzo-three.vercel.app.",
         ],
       },
     ],
@@ -130,7 +130,7 @@ export const LEGAL_DOCUMENTS: Record<LegalDocumentId, LegalDocument> = {
       {
         heading: "Contact",
         paragraphs: [
-          "For privacy questions or requests, contact Freelanzo support through the app or visit freelanzo.co.id. We may update this Policy; the “Last updated” date shows the latest version.",
+          "For privacy questions or requests, contact Freelanzo support through the app or visit freelanzo-three.vercel.app. We may update this Policy; the “Last updated” date shows the latest version.",
         ],
       },
     ],

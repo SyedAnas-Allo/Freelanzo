@@ -1,0 +1,93 @@
+{
+  "expo": {
+    "name": "Freelanzo",
+    "slug": "freelanzo",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "freelanzo",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#F8F5FF"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "co.id.freelanzo.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Freelanzo needs camera access to take check-in and check-out attendance photos so businesses can verify you were on site.",
+        "NSMicrophoneUsageDescription": "Freelanzo may use the microphone when the camera is open for attendance photos.",
+        "NSLocationWhenInUseUsageDescription": "Freelanzo uses your location to verify attendance at the job site and to show nearby gigs.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Freelanzo uses your location to verify attendance at the job site and to show nearby gigs.",
+        "NSPhotoLibraryUsageDescription": "Freelanzo needs photo library access so you can upload profile pictures and work photos.",
+        "NSPhotoLibraryAddUsageDescription": "Freelanzo needs permission to save attendance photos when you choose to keep them."
+      }
+    },
+    "android": {
+      "package": "co.id.freelanzo.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#F8F5FF",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "permissions": [
+        "CAMERA",
+        "RECORD_AUDIO",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "READ_MEDIA_IMAGES",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "INTERNET",
+        "VIBRATE"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": false,
+          "data": [
+            {
+              "scheme": "freelanzo",
+              "host": "*",
+              "pathPrefix": "/"
+            }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ],
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-web-browser",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Freelanzo needs camera access to take check-in and check-out attendance photos so businesses can verify you were on site.",
+          "microphonePermission": "Freelanzo may use the microphone when the camera is open for attendance photos.",
+          "recordAudioAndroid": false
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Freelanzo uses your location to verify attendance at the job site and to show nearby gigs.",
+          "isIosBackgroundLocationEnabled": false,
+          "isAndroidBackgroundLocationEnabled": false
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Freelanzo needs photo library access so you can upload profile pictures and work photos.",
+          "cameraPermission": "Freelanzo needs camera access to take check-in and check-out attendance photos so businesses can verify you were on site."
+        }
+      ]
+    ]
+  }
+}

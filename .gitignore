@@ -2,6 +2,7 @@
 
 # dependencies
 /node_modules
+/mobile/node_modules
 /.pnp
 .pnp.*
 .yarn/*
@@ -9,6 +10,13 @@
 !.yarn/plugins
 !.yarn/releases
 !.yarn/versions
+
+# Expo
+/mobile/.expo
+/mobile/dist
+/mobile/expo-env.d.ts
+/mobile/ios
+/mobile/android
 
 # testing
 /coverage

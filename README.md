@@ -8,6 +8,7 @@ Google sign-in → dual mode → post/discover/apply → hire → OTP attendance
 
 - Next.js (App Router) + TypeScript + Tailwind + shadcn/ui
 - Supabase (Auth, Postgres, Storage, RLS)
+- Expo WebView shell in [`mobile/`](./mobile) (same repo — camera, GPS, Google sign-in)
 
 ## Quick start (local)
 
@@ -46,6 +47,7 @@ Use **Continue with Google** after enabling Google in Supabase Auth.
 | `npm run db:start` | Start local Supabase |
 | `npm run db:reset` | Reset DB + re-apply migrations |
 | `npm test` | Unit tests |
+| `cd mobile && npx expo start` | Native WebView shell (see [`mobile/README.md`](./mobile/README.md)) |
 
 ## What's included
 

@@ -1,4 +1,4 @@
-export const SITE_URL = "https://freelanzo.co.id";
+export const SITE_URL = "https://freelanzo-three.vercel.app";
 
 export function jobShareUrl(jobId: string) {
   return `${SITE_URL}/freelancer/jobs/${jobId}`;
