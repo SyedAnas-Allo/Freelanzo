@@ -1,0 +1,2 @@
+-- Optional seed data for local development.
+-- Left empty for go-live readiness (no demo users or jobs).
