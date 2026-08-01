@@ -8,7 +8,10 @@ import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import type { LegalDocumentId } from "@/lib/legal";
 import { clearRoleReadyCookie } from "@/lib/role-session";
-import { createClient } from "@/lib/supabase/client";
+import {
+  createLoginClient,
+  isNativeWebView,
+} from "@/lib/supabase/native-auth";
 
 export default function LoginPage() {
   const [loading, setLoading] = useState(false);
@@ -17,13 +20,12 @@ export default function LoginPage() {
   async function signInWithGoogle() {
     setLoading(true);
     clearRoleReadyCookie();
-    const supabase = createClient();
+    const supabase = createLoginClient();
 
     const w = window as Window & {
-      __FREELANZO_NATIVE__?: boolean;
       ReactNativeWebView?: { postMessage: (msg: string) => void };
     };
-    const isNative = Boolean(w.__FREELANZO_NATIVE__ || w.ReactNativeWebView);
+    const isNative = isNativeWebView();
     // Use /auth/callback?native=1 so existing Supabase allowlist entries work.
     const redirectTo = isNative
       ? `${window.location.origin}/auth/callback?native=1`

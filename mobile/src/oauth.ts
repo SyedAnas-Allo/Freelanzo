@@ -75,7 +75,7 @@ function parseDeepLinkParams(url: string): URLSearchParams | null {
 
 /**
  * freelanzo://auth/session?code=… → WebView /auth/native?code=…
- * Client page exchanges the code where PKCE cookies live.
+ * Client page exchanges the code where the PKCE verifier lives (localStorage).
  */
 export function sessionDeepLinkToWebUrl(url: string): string | null {
   try {

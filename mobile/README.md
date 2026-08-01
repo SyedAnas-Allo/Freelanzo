@@ -2,10 +2,10 @@
 
 ## Google login flow
 
-1. WebView starts Google OAuth (PKCE cookies stay in the WebView)
+1. WebView starts Google OAuth (PKCE verifier in `localStorage` — cookies are unreliable when Custom Tabs background the WebView)
 2. System browser completes Google → `/auth/callback?native=1`
 3. Website opens `freelanzo://auth/session?code=…` once
-4. App loads `/auth/native?code=…` and exchanges the code in the WebView
+4. App loads `/auth/native?code=…`, exchanges the code, then mirrors the session into SSR cookies
 5. You land on `/continue`
 
 ## Supabase Redirect URLs (required)

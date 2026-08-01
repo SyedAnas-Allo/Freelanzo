@@ -4,11 +4,12 @@ import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { clearRoleReadyCookie } from "@/lib/role-session";
 import { createClient } from "@/lib/supabase/client";
+import { completeNativeOAuth } from "@/lib/supabase/native-auth";
 
 /**
  * Native handoff page (runs inside the app WebView).
- * Prefers exchanging the OAuth `code` client-side so PKCE cookies from the
- * WebView login start are available. Also supports legacy token handoff.
+ * Exchanges the OAuth `code` using localStorage PKCE (cookies are cleared when
+ * Custom Tabs background the WebView). Also supports legacy token handoff.
  */
 export default function NativeAuthPage() {
   const router = useRouter();
@@ -23,11 +24,8 @@ export default function NativeAuthPage() {
     let cancelled = false;
 
     void (async () => {
-      const supabase = createClient();
-
       if (code) {
-        const { error: exchangeError } =
-          await supabase.auth.exchangeCodeForSession(code);
+        const { error: exchangeError } = await completeNativeOAuth(code);
         if (cancelled) return;
         if (exchangeError) {
           setError(exchangeError.message);
@@ -39,6 +37,7 @@ export default function NativeAuthPage() {
       }
 
       if (access_token && refresh_token) {
+        const supabase = createClient();
         const { error: sessionError } = await supabase.auth.setSession({
           access_token,
           refresh_token,
