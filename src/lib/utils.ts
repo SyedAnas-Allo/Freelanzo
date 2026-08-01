@@ -100,6 +100,11 @@ export function haversineKm(
   return 6371 * 2 * Math.asin(Math.sqrt(a));
 }
 
+/** Build a dialer URL; keep leading + and digits only. */
 export function telLink(phone: string) {
-  return `tel:${phone}`;
+  const cleaned = phone.replace(/[^\d+]/g, "");
+  return `tel:${cleaned}`;
 }
+
+/** India emergency services. */
+export const EMERGENCY_PHONE = "112";

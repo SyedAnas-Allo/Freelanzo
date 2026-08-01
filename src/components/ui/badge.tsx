@@ -27,9 +27,9 @@ const badgeVariants = cva(
         info: "bg-sky-500/10 text-sky-700 dark:text-sky-300",
       },
       size: {
-        default: "h-8 rounded-lg px-3 text-[13px]",
+        default: "h-8 rounded-lg px-3 text-sm",
         sm: "h-7 rounded-md px-2.5 text-xs",
-        lg: "h-9 rounded-lg px-3.5 text-sm",
+        lg: "h-9 rounded-lg px-3.5 text-[0.9375rem]",
       },
     },
     defaultVariants: {

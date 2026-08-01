@@ -211,9 +211,6 @@ function BusinessJobsContent() {
               jobLifecycles,
               appliedCountByJob.get(job.id) ?? 0,
             );
-            const isClosed = ["completed", "cancelled", "expired"].includes(
-              job.status,
-            );
             return (
               <JobCard
                 key={job.id}
@@ -221,7 +218,6 @@ function BusinessJobsContent() {
                 statusLabel={jobStatusLabel(job.status)}
                 statusVariant={jobStatusVariant(job.status)}
                 href={`/business/jobs/${job.id}/applicants`}
-                actionLabel={isClosed ? "View" : "Manage"}
                 footer={<JobLifecycleSummaryBar summary={summary} />}
               />
             );

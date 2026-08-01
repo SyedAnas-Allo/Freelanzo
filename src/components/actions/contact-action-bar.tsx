@@ -1,6 +1,9 @@
+"use client";
+
 import Link from "next/link";
 import { MessageSquare, Phone } from "lucide-react";
-import { cn, telLink } from "@/lib/utils";
+import { DialLink } from "@/components/dial-link";
+import { cn } from "@/lib/utils";
 
 export function ContactActionBar({
   phone,
@@ -30,8 +33,8 @@ export function ContactActionBar({
   );
 
   const callButton = canCall ? (
-    <a
-      href={telLink(phone!)}
+    <DialLink
+      phone={phone!}
       className={cn(
         baseClass,
         stacked ? "bg-primary/5 text-primary" : "bg-primary/10 text-primary",
@@ -42,12 +45,16 @@ export function ContactActionBar({
         className={cn(compact ? "size-3.5" : stacked ? "size-4.5" : "size-4")}
       />
       <span className={stacked ? "text-[11px] font-bold" : undefined}>Call</span>
-    </a>
+    </DialLink>
   ) : phone || callLocked || stacked ? (
     <div
       className={cn(baseClass, "bg-muted/50 text-muted-foreground opacity-50")}
       aria-disabled="true"
-      title={callLocked ? "Number locked after gig ended" : undefined}
+      title={
+        callLocked
+          ? "Number locked after gig ended"
+          : "Phone number unavailable"
+      }
     >
       <Phone
         aria-hidden="true"

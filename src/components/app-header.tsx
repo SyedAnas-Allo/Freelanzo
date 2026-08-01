@@ -11,19 +11,21 @@ export function AppHeader({
   right?: React.ReactNode;
 }) {
   return (
-    <header className="sticky top-0 z-30 bg-background px-4 py-1.5">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex min-w-10 items-center">
-          <Logo href="/freelancer" size="md" />
+    <header className="sticky top-0 z-30 bg-background px-4 py-2.5">
+      <div className="relative flex items-center justify-end gap-3">
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div className="pointer-events-auto">
+            <Logo href="/freelancer" size="lg" />
+          </div>
         </div>
 
-        <div className="flex min-w-10 items-center justify-end gap-1">
+        <div className="relative z-10 flex min-w-11 items-center justify-end gap-1">
           {right}
-          <Button variant="ghost" size="icon-sm" className="relative" asChild>
+          <Button variant="ghost" size="icon" className="relative" asChild>
             <Link href="/notifications" aria-label="Notifications">
-              <Bell className="size-5" />
+              <Bell className="size-6" />
               {unreadCount > 0 && (
-                <span className="absolute -right-0.5 -top-0.5 flex size-4 items-center justify-center rounded-full bg-destructive text-[9px] font-bold text-white">
+                <span className="absolute -right-0.5 -top-0.5 flex size-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-white">
                   {unreadCount > 9 ? "9+" : unreadCount}
                 </span>
               )}

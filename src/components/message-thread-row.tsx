@@ -38,13 +38,13 @@ export function MessageThreadRow({
     >
       <div className="relative shrink-0">
         {icon ? (
-          <div className="flex size-11 items-center justify-center rounded-full bg-secondary text-primary">
+          <div className="flex size-12 items-center justify-center rounded-full bg-secondary text-primary">
             {icon}
           </div>
         ) : (
-          <Avatar className="size-11">
+          <Avatar className="size-12">
             <AvatarImage src={photoUrl ?? undefined} alt={name} />
-            <AvatarFallback className="bg-secondary text-xs font-bold text-primary">
+            <AvatarFallback className="bg-secondary text-sm font-bold text-primary">
               {initials || "?"}
             </AvatarFallback>
           </Avatar>
@@ -56,21 +56,21 @@ export function MessageThreadRow({
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-1.5">
-            <p className="truncate text-sm font-bold">{name}</p>
+            <p className="truncate text-base font-bold">{name}</p>
             {badge ? (
               <Badge variant="secondary" size="sm" className="shrink-0">
                 {badge}
               </Badge>
             ) : null}
           </div>
-          <span className="shrink-0 text-[10px] font-light text-muted-foreground">
+          <span className="shrink-0 text-xs font-light text-muted-foreground">
             {time}
           </span>
         </div>
         <div className="mt-0.5 flex items-center justify-between gap-2">
           <p
             className={cn(
-              "truncate text-xs font-light text-muted-foreground",
+              "truncate text-sm font-light text-muted-foreground",
               unread ? "font-medium text-foreground/80" : null,
             )}
           >

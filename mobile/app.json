@@ -23,7 +23,8 @@
         "NSLocationWhenInUseUsageDescription": "Freelanzo uses your location to verify attendance at the job site and to show nearby gigs.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Freelanzo uses your location to verify attendance at the job site and to show nearby gigs.",
         "NSPhotoLibraryUsageDescription": "Freelanzo needs photo library access so you can upload profile pictures and work photos.",
-        "NSPhotoLibraryAddUsageDescription": "Freelanzo needs permission to save attendance photos when you choose to keep them."
+        "NSPhotoLibraryAddUsageDescription": "Freelanzo needs permission to save attendance photos when you choose to keep them.",
+        "LSApplicationQueriesSchemes": ["tel", "mailto", "sms", "whatsapp"]
       }
     },
     "android": {

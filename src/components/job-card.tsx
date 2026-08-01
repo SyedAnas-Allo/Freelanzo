@@ -21,7 +21,6 @@ export function JobCard({
   statusLabel,
   statusVariant = "success",
   href,
-  actionLabel = "View Details",
   footer,
 }: {
   job: Job;
@@ -31,85 +30,86 @@ export function JobCard({
   statusLabel?: string;
   statusVariant?: BadgeVariant;
   href: string;
-  actionLabel?: string;
   footer?: React.ReactNode;
 }) {
   const location =
     [job.area, job.city].filter(Boolean).join(", ") || job.address;
+  const workDates = jobWorkDates(job);
+  const multiDay = workDates.length > 1;
 
   const body = (
     <div className="flex gap-3">
       <JobCategoryIcon category={job.category} />
 
-      <div className="min-w-0 flex-1">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-1.5">
-              <h3 className="truncate text-[14px] font-bold leading-tight text-foreground">
-                {job.title}
-              </h3>
-              {statusLabel ? (
-                <Badge variant={statusVariant} size="sm">
-                  {statusLabel}
-                </Badge>
-              ) : null}
-            </div>
+      <div className="min-w-0 flex-1 space-y-1.5">
+        <div className="flex flex-wrap items-start gap-x-2 gap-y-1">
+          <h3 className="min-w-0 flex-1 text-pretty text-base font-bold leading-snug text-foreground [overflow-wrap:anywhere]">
+            {job.title}
+          </h3>
+          {statusLabel ? (
+            <Badge variant={statusVariant} size="sm" className="mt-0.5 shrink-0">
+              {statusLabel}
+            </Badge>
+          ) : null}
+        </div>
 
-            {businessName ? (
-              <p className="mt-0.5 flex items-center gap-1 text-xs font-semibold text-primary">
-                <span className="truncate">{businessName}</span>
-                {verified ? (
-                  <BadgeCheck className="size-3.5 shrink-0 fill-sky-500 text-white" />
-                ) : null}
-              </p>
+        {businessName ? (
+          <p className="flex items-start gap-1 text-sm font-semibold leading-snug text-primary">
+            <span className="min-w-0 text-pretty [overflow-wrap:anywhere]">
+              {businessName}
+            </span>
+            {verified ? (
+              <BadgeCheck className="mt-0.5 size-3.5 shrink-0 fill-sky-500 text-white" />
             ) : null}
+          </p>
+        ) : null}
 
-            <p className="mt-1 flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
-              <MapPin className="size-3 shrink-0" />
-              <span className="truncate">
-                {location}
-                {distanceKm != null ? ` • ${distanceKm.toFixed(1)} km` : null}
-              </span>
-            </p>
-          </div>
+        {location ? (
+          <p className="flex items-start gap-1 text-xs font-medium leading-snug text-muted-foreground">
+            <MapPin className="mt-0.5 size-3.5 shrink-0" />
+            <span className="min-w-0 text-pretty [overflow-wrap:anywhere]">
+              {location}
+              {distanceKm != null ? ` · ${distanceKm.toFixed(1)} km` : null}
+            </span>
+          </p>
+        ) : null}
 
-          <div className="shrink-0 text-right">
-            <p className="text-sm font-extrabold text-emerald-600">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 pt-0.5">
+          <div>
+            <p className="text-base font-extrabold leading-none text-emerald-600">
               {formatPay(jobDayTotal(job))}
-              <span className="font-semibold"> / Day</span>
+              <span className="text-sm font-semibold"> / Day</span>
             </p>
-            {jobWorkDates(job).length > 1 ? (
-              <p className="mt-0.5 text-[10px] font-medium text-emerald-700/75">
-                {formatPay(jobEngagementTotal({ ...job, work_dates: jobWorkDates(job) }))} total
+            {multiDay ? (
+              <p className="mt-0.5 text-xs font-medium text-emerald-700/75">
+                {formatPay(
+                  jobEngagementTotal({ ...job, work_dates: workDates }),
+                )}{" "}
+                total
               </p>
-            ) : (job.food_allowance_inr > 0 || job.travel_allowance_inr > 0) ? (
-              <p className="mt-0.5 text-[10px] font-medium text-emerald-700/75">
+            ) : job.food_allowance_inr > 0 || job.travel_allowance_inr > 0 ? (
+              <p className="mt-0.5 text-xs font-medium text-emerald-700/75">
                 incl. allowances
               </p>
             ) : null}
-            <p
-              className="mt-0.5 flex items-center justify-end gap-1 text-[11px] font-medium text-muted-foreground"
-              suppressHydrationWarning
-            >
-              <Calendar className="size-3 shrink-0" />
-              {jobWorkDates(job).length > 1
-                ? formatWorkDatesLabel(jobWorkDates(job))
-                : formatJobDateRelative(job.job_date)}
-            </p>
           </div>
+          <p
+            className="flex items-center gap-1 text-xs font-medium text-muted-foreground"
+            suppressHydrationWarning
+          >
+            <Calendar className="size-3.5 shrink-0" />
+            {multiDay
+              ? formatWorkDatesLabel(workDates)
+              : formatJobDateRelative(job.job_date)}
+          </p>
         </div>
 
-        <div className="mt-2 flex items-center justify-between gap-2">
-          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-            <span className="inline-flex h-5 items-center rounded-full bg-secondary/80 px-2 text-[10px] font-medium text-secondary-foreground">
-              {job.skilled ? "Skilled" : "Unskilled"}
-            </span>
-            <span className="inline-flex h-5 items-center rounded-full bg-secondary/80 px-2 text-[10px] font-medium text-secondary-foreground">
-              {shiftLabel(job.start_time)} Shift
-            </span>
-          </div>
-          <span className="inline-flex h-7 shrink-0 items-center rounded-lg border border-primary/30 bg-card px-2.5 text-[11px] font-semibold text-primary">
-            {actionLabel}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="inline-flex h-6 items-center rounded-full bg-secondary/80 px-2.5 text-xs font-medium text-secondary-foreground">
+            {job.skilled ? "Skilled" : "Unskilled"}
+          </span>
+          <span className="inline-flex h-6 items-center rounded-full bg-secondary/80 px-2.5 text-xs font-medium text-secondary-foreground">
+            {shiftLabel(job.start_time)} Shift
           </span>
         </div>
       </div>

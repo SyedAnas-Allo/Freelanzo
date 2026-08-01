@@ -19,7 +19,7 @@ export function SectionHeader({
     "href" in action ? (
       <Link
         href={action.href}
-        className="shrink-0 text-xs font-semibold text-primary hover:text-primary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+        className="shrink-0 text-sm font-semibold text-primary hover:text-primary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
       >
         {action.label}
       </Link>
@@ -35,9 +35,9 @@ export function SectionHeader({
       )}
     >
       <div className="min-w-0">
-        <h2 className="text-pretty text-sm font-extrabold">{title}</h2>
+        <h2 className="text-pretty text-base font-extrabold">{title}</h2>
         {description ? (
-          <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
+          <p className="mt-0.5 text-sm text-muted-foreground">{description}</p>
         ) : null}
       </div>
       {actionNode}

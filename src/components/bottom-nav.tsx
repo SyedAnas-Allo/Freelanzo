@@ -111,7 +111,7 @@ export function BottomNav({
 
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 mx-auto max-w-[430px] border-t bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md">
-      <ul className="grid h-16 grid-cols-5 items-end px-1">
+      <ul className="grid h-14 grid-cols-5 items-end px-1">
         {items.map((item, index) => {
           const active = item.match
             ? item.match(pathname)
@@ -124,12 +124,12 @@ export function BottomNav({
               <li key={item.label} className="relative flex justify-center">
                 <Link
                   href={item.href}
-                  className="-mt-5 flex flex-col items-center gap-0.5"
+                  className="-mt-4 flex flex-col items-center gap-0.5"
                   onPointerEnter={() => router.prefetch(item.href)}
                   onTouchStart={() => router.prefetch(item.href)}
                 >
-                  <span className="flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/30 ring-4 ring-background">
-                    <Icon className="size-6" />
+                  <span className="flex size-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/30 ring-4 ring-background">
+                    <Icon className="size-5" />
                   </span>
                   <span className="text-[10px] font-semibold text-primary">
                     {item.label}
@@ -146,7 +146,7 @@ export function BottomNav({
                 onPointerEnter={() => router.prefetch(item.href)}
                 onTouchStart={() => router.prefetch(item.href)}
                 className={cn(
-                  "relative flex flex-col items-center gap-1 py-2 text-[10px] font-medium",
+                  "relative flex flex-col items-center gap-0.5 py-1.5 text-[10px] font-medium",
                   active ? "text-primary" : "text-muted-foreground",
                 )}
               >

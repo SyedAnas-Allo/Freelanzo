@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { ChevronDown, Phone } from "lucide-react";
+import { DialLink } from "@/components/dial-link";
 import { SosBadge } from "@/components/sos-badge";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { cn, EMERGENCY_PHONE } from "@/lib/utils";
 
 /** expandable SOS strip for active job flows. */
 export function SosCallout({ className }: { className?: string }) {
@@ -32,10 +33,10 @@ export function SosCallout({ className }: { className?: string }) {
           className="h-11 rounded-xl bg-red-600 text-sm font-bold hover:bg-red-700"
           asChild
         >
-          <a href="tel:112">
+          <DialLink phone={EMERGENCY_PHONE}>
             <Phone className="size-4" />
-            Call 112
-          </a>
+            Call {EMERGENCY_PHONE}
+          </DialLink>
         </Button>
         <Button
           variant="outline"

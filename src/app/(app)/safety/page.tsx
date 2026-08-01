@@ -2,11 +2,13 @@
 
 import Link from "next/link";
 import { Phone, LifeBuoy } from "lucide-react";
+import { DialLink } from "@/components/dial-link";
 import { InfoCallout } from "@/components/info-callout";
 import { PageContent } from "@/components/layout/page-content";
 import { PageHeader } from "@/components/layout/page-header";
 import { SosBadge } from "@/components/sos-badge";
 import { Button } from "@/components/ui/button";
+import { EMERGENCY_PHONE } from "@/lib/utils";
 
 export default function SafetyPage() {
   return (
@@ -30,10 +32,10 @@ export default function SafetyPage() {
             className="h-12 w-full rounded-xl bg-red-600 text-base font-bold hover:bg-red-700"
             asChild
           >
-            <a href="tel:112">
+            <DialLink phone={EMERGENCY_PHONE}>
               <Phone className="mr-2 size-4" />
-              Call Emergency (112)
-            </a>
+              Call Emergency ({EMERGENCY_PHONE})
+            </DialLink>
           </Button>
           <Button
             variant="outline"

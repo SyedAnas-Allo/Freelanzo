@@ -13,8 +13,8 @@ export function Logo({
   /** Show only the F mark */
   markOnly?: boolean;
 }) {
-  const mark = size === "lg" ? 32 : size === "sm" ? 22 : 26;
-  const wordH = size === "lg" ? 16 : size === "sm" ? 12 : 14;
+  const mark = size === "lg" ? 36 : size === "sm" ? 26 : 30;
+  const wordH = size === "lg" ? 18 : size === "sm" ? 14 : 16;
   const wordW = Math.round(wordH * (500 / 79));
 
   return (

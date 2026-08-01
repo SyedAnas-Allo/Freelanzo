@@ -1,6 +1,6 @@
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BackHandler, Platform, StyleSheet, View } from "react-native";
+import { Alert, BackHandler, Platform, StyleSheet, View } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import {
   WebView,
@@ -20,6 +20,21 @@ import {
   sessionDeepLinkToWebUrl,
 } from "./src/oauth";
 
+async function openExternalScheme(url: string) {
+  try {
+    await Linking.openURL(url);
+  } catch (e) {
+    console.warn("openExternalScheme failed", url, e);
+    const phone = url.replace(/^tel:/i, "");
+    Alert.alert(
+      "Can't open dialer",
+      phone
+        ? `Please dial ${phone} manually.`
+        : "This link isn't supported on this device.",
+    );
+  }
+}
+
 export default function App() {
   const webRef = useRef<WebView>(null);
   const oauthLock = useRef(false);
@@ -36,10 +51,28 @@ export default function App() {
 
   const injectedJavaScript = useMemo(() => {
     const redirect = JSON.stringify(appReturn);
+    // Intercept tel:/mailto:/sms: clicks in-page and hand them to native
+    // Linking — WKWebView often ignores scheme navigations entirely.
     return `
       (function () {
         window.__FREELANZO_NATIVE__ = true;
         window.__FREELANZO_OAUTH_REDIRECT__ = ${redirect};
+        if (!window.__FREELANZO_DIAL_HOOK__) {
+          window.__FREELANZO_DIAL_HOOK__ = true;
+          document.addEventListener('click', function (e) {
+            var el = e.target;
+            while (el && el.tagName !== 'A') el = el.parentElement;
+            if (!el || !el.href) return;
+            var href = el.href;
+            if (/^(tel|mailto|sms|whatsapp):/i.test(href)) {
+              e.preventDefault();
+              e.stopPropagation();
+              if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+                window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'OPEN_URL', url: href }));
+              }
+            }
+          }, true);
+        }
         true;
       })();
     `;
@@ -150,7 +183,7 @@ export default function App() {
       url.startsWith("whatsapp:") ||
       url.startsWith("sms:")
     ) {
-      void Linking.openURL(url).catch(() => undefined);
+      void openExternalScheme(url);
       return false;
     }
 
@@ -170,6 +203,11 @@ export default function App() {
       };
       if (data.type === "OAUTH_START" && data.url) {
         void finishOAuth(data.url);
+        return;
+      }
+      // Dialer / mail / sms from web — more reliable than WebView navigation.
+      if (data.type === "OPEN_URL" && data.url) {
+        void openExternalScheme(data.url);
       }
     } catch {
       // ignore
@@ -210,7 +248,16 @@ export default function App() {
             domStorageEnabled
             javaScriptEnabled
             setSupportMultipleWindows={false}
-            originWhitelist={["https://*", "http://*"]}
+            // tel:/mailto: must be listed or the WebView swallows them before
+            // onShouldStartLoadWithRequest can hand off to Linking.
+            originWhitelist={[
+              "https://*",
+              "http://*",
+              "tel:*",
+              "mailto:*",
+              "sms:*",
+              "whatsapp:*",
+            ]}
             onLoadStart={() => {
               if (booted.current) setPageLoading(true);
             }}
