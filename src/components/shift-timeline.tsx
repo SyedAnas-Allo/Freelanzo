@@ -38,7 +38,7 @@ export function ShiftTimeline({
   const dayEnd = 22 * 60;
   const span = dayEnd - dayStart;
 
-  let s = parseMinutes(start);
+  const s = parseMinutes(start);
   let e = parseMinutes(end);
   if (e <= s) e += 24 * 60;
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -43,12 +43,13 @@ export function ReportSheet({
   const [details, setDetails] = useState("");
   const [pending, startTransition] = useTransition();
 
-  useEffect(() => {
-    if (!open) {
+  function handleOpenChange(next: boolean) {
+    if (!next) {
       setReason(null);
       setDetails("");
     }
-  }, [open]);
+    onOpenChange(next);
+  }
 
   function submit() {
     if (!reason) {
@@ -82,7 +83,7 @@ export function ReportSheet({
       if (!result.ok) {
         if (result.duplicate) {
           toast.message("You've already reported this");
-          onOpenChange(false);
+          handleOpenChange(false);
           return;
         }
         toast.error(result.message);
@@ -90,12 +91,12 @@ export function ReportSheet({
       }
 
       toast.success("Report submitted. We'll review it.");
-      onOpenChange(false);
+      handleOpenChange(false);
     });
   }
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <Sheet open={open} onOpenChange={handleOpenChange}>
       <SheetContent
         side="bottom"
         className="max-h-[85dvh] gap-0 overflow-y-auto rounded-t-3xl pb-[max(1rem,env(safe-area-inset-bottom))]"

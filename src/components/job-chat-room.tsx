@@ -87,9 +87,12 @@ export function JobChatRoom({
     );
   }, [mentionQuery, participants, currentUserId]);
 
-  useEffect(() => {
+  const mentionResetKey = `${mentionQuery?.start ?? ""}:${mentionQuery?.query ?? ""}:${mentionCandidates.length}`;
+  const [lastMentionResetKey, setLastMentionResetKey] = useState(mentionResetKey);
+  if (mentionResetKey !== lastMentionResetKey) {
+    setLastMentionResetKey(mentionResetKey);
     setMentionIndex(0);
-  }, [mentionQuery?.start, mentionQuery?.query, mentionCandidates.length]);
+  }
 
   const markRead = useCallback(async () => {
     const supabase = createClient();
