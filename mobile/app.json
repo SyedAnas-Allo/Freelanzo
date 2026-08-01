@@ -11,7 +11,7 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#F8F5FF"
+      "backgroundColor": "#F8F2FF"
     },
     "ios": {
       "supportsTablet": true,
@@ -27,8 +27,9 @@
     },
     "android": {
       "package": "co.id.freelanzo.app",
+      "versionCode": 1,
       "adaptiveIcon": {
-        "backgroundColor": "#F8F5FF",
+        "backgroundColor": "#F8F2FF",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -50,9 +51,7 @@
           "autoVerify": false,
           "data": [
             {
-              "scheme": "freelanzo",
-              "host": "*",
-              "pathPrefix": "/"
+              "scheme": "freelanzo"
             }
           ],
           "category": ["BROWSABLE", "DEFAULT"]
@@ -63,6 +62,12 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
+    "extra": {
+      "eas": {
+        "projectId": "e0a2ea66-3f5c-4f85-86af-bdeaececd413"
+      }
+    },
+    "owner": "faiqh",
     "plugins": [
       "expo-web-browser",
       [

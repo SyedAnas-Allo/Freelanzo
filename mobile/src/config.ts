@@ -11,6 +11,8 @@ export const APP_USER_AGENT_TOKEN = "FreelanzoApp/1.0";
 
 export const BRAND = {
   name: "Freelanzo",
-  primary: "#5E2CED",
-  background: "#F8F5FF",
+  primary: "#8E30FF",
+  background: "#F8F2FF",
+  headline: "#5C17D2",
+  muted: "#7A7688",
 } as const;

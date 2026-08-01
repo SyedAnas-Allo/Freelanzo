@@ -4,55 +4,51 @@ import { WEB_URL } from "./config";
 
 WebBrowser.maybeCompleteAuthSession();
 
-const GOOGLE_HOSTS = [
-  "accounts.google.com",
-  "accounts.google.co.",
-  "googleapis.com",
-];
-
-const SUPABASE_AUTH_PATH = "/auth/v1/authorize";
-
-/** Where Supabase should send the user after Google auth (must be allow-listed). */
-export function getWebsiteOAuthRedirect(): string {
-  return `${WEB_URL}/auth/callback`;
+/** Deep link AuthSession listens for. */
+export function getAppReturnDeepLink(): string {
+  return "freelanzo://auth/session";
 }
 
 /**
- * AuthSession completion URL — same as the website callback so the system
- * browser closes when Supabase redirects there (not localhost / Site URL).
+ * Use the already-documented /auth/callback path with ?native=1.
+ * A brand-new path is often missing from Supabase Redirect URLs, which
+ * dumps the user on the website with no way back into the app.
  */
-export function getAuthSessionRedirectUrl(): string {
-  return getWebsiteOAuthRedirect();
+export function getWebsiteNativeOAuthRedirect(): string {
+  return `${WEB_URL}/auth/callback?native=1`;
 }
 
-export function isOAuthUrl(url: string): boolean {
+export function isSupabaseAuthorizeUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
-    const host = parsed.hostname.toLowerCase();
-    if (GOOGLE_HOSTS.some((h) => host === h || host.startsWith(h))) {
-      return true;
-    }
-    if (
-      host.includes("supabase.co") &&
-      parsed.pathname.includes(SUPABASE_AUTH_PATH)
-    ) {
-      return true;
-    }
-    return false;
+    return (
+      parsed.hostname.includes("supabase.co") &&
+      parsed.pathname.includes("/auth/v1/authorize")
+    );
   } catch {
     return false;
   }
 }
 
-/** Force Supabase authorize links to return to the real site, never localhost. */
-export function withWebsiteOAuthRedirect(url: string): string {
+export function isGoogleUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return (
+      host === "accounts.google.com" || host.startsWith("accounts.google.")
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function withWebsiteNativeOAuthRedirect(url: string): string {
   try {
     const parsed = new URL(url);
     if (
       parsed.hostname.includes("supabase.co") &&
-      parsed.pathname.includes(SUPABASE_AUTH_PATH)
+      parsed.pathname.includes("/auth/v1/authorize")
     ) {
-      parsed.searchParams.set("redirect_to", getWebsiteOAuthRedirect());
+      parsed.searchParams.set("redirect_to", getWebsiteNativeOAuthRedirect());
       return parsed.toString();
     }
   } catch {
@@ -61,119 +57,100 @@ export function withWebsiteOAuthRedirect(url: string): string {
   return url;
 }
 
-export function isNativeAuthCallback(url: string): boolean {
+function parseDeepLinkParams(url: string): URLSearchParams | null {
   try {
-    const parsed = Linking.parse(url);
-    const path = (parsed.path ?? "").replace(/^\//, "");
-    return path === "auth/callback" || path.endsWith("/auth/callback");
+    const normalized = url
+      .replace(/^freelanzo:/i, "https:")
+      .replace(/^exp[s]?:/i, "https:");
+    return new URL(normalized).searchParams;
   } catch {
-    return false;
+    try {
+      const parsed = Linking.parse(url);
+      const q = parsed.queryParams ?? {};
+      const params = new URLSearchParams();
+      for (const [key, value] of Object.entries(q)) {
+        if (typeof value === "string") params.set(key, value);
+      }
+      return params;
+    } catch {
+      return null;
+    }
   }
 }
 
-function codeFromQuery(
-  query: Record<string, string | string[] | undefined> | null | undefined,
-): string | null {
-  if (!query) return null;
-  const code = query.code;
-  return typeof code === "string" && code.length > 0 ? code : null;
-}
-
-function websiteCallbackWithCode(code: string, next?: string): string {
-  const target = new URL(`${WEB_URL}/auth/callback`);
-  target.searchParams.set("code", code);
-  target.searchParams.set(
-    "next",
-    next && next.length > 0 ? next : "/continue",
-  );
-  return target.toString();
-}
-
 /**
- * Turn a native deep-link callback (with ?code=) into the website callback
- * so the Next.js route can exchange the code and set session cookies in the WebView.
+ * freelanzo://auth/session?code=… → WebView /auth/callback?code=…
+ * (or legacy token handoff → /auth/native)
  */
-export function websiteCallbackFromNativeUrl(url: string): string | null {
+export function sessionDeepLinkToWebUrl(url: string): string | null {
   try {
-    const parsed = Linking.parse(url);
-    const code = codeFromQuery(
-      parsed.queryParams as Record<string, string | string[] | undefined>,
-    );
-    if (!code) return null;
-    const next = parsed.queryParams?.next;
-    return websiteCallbackWithCode(
-      code,
-      typeof next === "string" ? next : undefined,
-    );
+    if (!/^freelanzo:\/\//i.test(url) && !/^exp[s]?:\/\//i.test(url)) {
+      return null;
+    }
+
+    const params = parseDeepLinkParams(url);
+    if (!params) return null;
+
+    const code = params.get("code");
+    if (code) {
+      const target = new URL(`${WEB_URL}/auth/callback`);
+      target.searchParams.set("code", code);
+      target.searchParams.set("next", "/continue");
+      return target.toString();
+    }
+
+    const access_token = params.get("access_token");
+    const refresh_token = params.get("refresh_token");
+    if (access_token && refresh_token) {
+      const target = new URL(`${WEB_URL}/auth/native`);
+      target.searchParams.set("access_token", access_token);
+      target.searchParams.set("refresh_token", refresh_token);
+      return target.toString();
+    }
+
+    return null;
   } catch {
     return null;
   }
 }
 
-export function isWebsiteAuthCallback(url: string): boolean {
+/** If AuthSession captured an https callback with ?code=, finish in WebView. */
+export function codeUrlToWebsiteCallback(url: string): string | null {
   try {
-    const parsed = new URL(url);
-    const base = new URL(WEB_URL);
-    return (
-      parsed.origin === base.origin &&
-      parsed.pathname.startsWith("/auth/callback")
-    );
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Catch bad returns like http://localhost:3000/?code=… (Supabase Site URL)
- * and rewrite them onto the real /auth/callback.
- */
-export function extractAuthCodeUrl(url: string): string | null {
-  try {
-    // Deep links (freelanzo://, exp://)
-    if (!/^https?:/i.test(url)) {
-      return websiteCallbackFromNativeUrl(url);
-    }
-
+    if (!/^https?:/i.test(url)) return null;
     const parsed = new URL(url);
     const code = parsed.searchParams.get("code");
     if (!code) return null;
-
-    const next = parsed.searchParams.get("next") ?? undefined;
-    const onWebsiteCallback =
-      parsed.origin === new URL(WEB_URL).origin &&
-      parsed.pathname.startsWith("/auth/callback");
-
-    if (onWebsiteCallback) {
-      return url;
-    }
-
-    // localhost Site URL fallback, wrong path, etc.
-    return websiteCallbackWithCode(code, next ?? undefined);
+    // If this is already our native bridge page, ignore — deep link handles it.
+    if (parsed.searchParams.get("native") === "1") return null;
+    const target = new URL(`${WEB_URL}/auth/callback`);
+    target.searchParams.set("code", code);
+    target.searchParams.set("next", "/continue");
+    return target.toString();
   } catch {
     return null;
   }
 }
 
+/**
+ * System browser OAuth. Listen for freelanzo:// — Android does not reliably
+ * close Custom Tabs on plain HTTPS callbacks without verified App Links.
+ */
 export async function openOAuthInSystemBrowser(
   url: string,
-): Promise<{ type: "success"; url: string } | { type: "dismiss" }> {
-  const authorizeUrl = withWebsiteOAuthRedirect(url);
-  const redirectUrl = getAuthSessionRedirectUrl();
-  const result = await WebBrowser.openAuthSessionAsync(
-    authorizeUrl,
-    redirectUrl,
-    {
-      showInRecents: true,
-      preferEphemeralSession: false,
-    },
-  );
+): Promise<string | null> {
+  const authorizeUrl = withWebsiteNativeOAuthRedirect(url);
+  const returnUrl = getAppReturnDeepLink();
+
+  const result = await WebBrowser.openAuthSessionAsync(authorizeUrl, returnUrl, {
+    preferEphemeralSession: false,
+  });
 
   if (result.type === "success" && result.url) {
-    return { type: "success", url: result.url };
+    return (
+      sessionDeepLinkToWebUrl(result.url) ??
+      codeUrlToWebsiteCallback(result.url)
+    );
   }
-  return { type: "dismiss" };
-}
-
-export function resolveAuthReturnUrl(url: string): string | null {
-  return extractAuthCodeUrl(url);
+  return null;
 }

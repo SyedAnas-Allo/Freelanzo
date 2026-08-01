@@ -18,24 +18,36 @@ export default function LoginPage() {
     setLoading(true);
     clearRoleReadyCookie();
     const supabase = createClient();
-    // Native WebView shell injects the production /auth/callback URL so Google
-    // OAuth never falls back to a localhost Site URL.
-    const nativeRedirect = (
-      window as Window & { __FREELANZO_OAUTH_REDIRECT__?: string }
-    ).__FREELANZO_OAUTH_REDIRECT__;
-    const redirectTo =
-      typeof nativeRedirect === "string" && nativeRedirect.length > 0
-        ? nativeRedirect
-        : `${window.location.origin}/auth/callback`;
-    const { error } = await supabase.auth.signInWithOAuth({
+
+    const w = window as Window & {
+      __FREELANZO_NATIVE__?: boolean;
+      ReactNativeWebView?: { postMessage: (msg: string) => void };
+    };
+    const isNative = Boolean(w.__FREELANZO_NATIVE__ || w.ReactNativeWebView);
+    // Use /auth/callback?native=1 so existing Supabase allowlist entries work.
+    const redirectTo = isNative
+      ? `${window.location.origin}/auth/callback?native=1`
+      : `${window.location.origin}/auth/callback`;
+
+    const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
         redirectTo,
+        skipBrowserRedirect: isNative,
       },
     });
+
     if (error) {
       setLoading(false);
       toast.error(error.message);
+      return;
+    }
+
+    if (isNative && data?.url && w.ReactNativeWebView) {
+      w.ReactNativeWebView.postMessage(
+        JSON.stringify({ type: "OAUTH_START", url: data.url }),
+      );
+      return;
     }
   }
 
