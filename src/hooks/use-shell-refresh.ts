@@ -1,7 +1,6 @@
 "use client";
 
-import { usePathname } from "next/navigation";
-import { useCallback, useEffect, useEffectEvent, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 type ShellBadges = {
@@ -9,16 +8,21 @@ type ShellBadges = {
   messageUnreadCount: number;
 };
 
+const MIN_REFRESH_MS = 20_000;
+
 /**
- * Keeps AppShell badges fresh without a full RSC `router.refresh()` on every
- * navigation. Revalidates lightly via the browser Supabase client on route
- * change + tab focus.
+ * Badge counts: load once on mount, again on tab focus, and at most every
+ * 20s on navigation — not a full refetch on every route change.
  */
 export function useShellBadges(initial: ShellBadges): ShellBadges {
-  const pathname = usePathname();
   const [badges, setBadges] = useState(initial);
+  const lastRefreshAt = useRef(0);
 
-  const refreshBadges = useCallback(async () => {
+  const refreshBadges = useCallback(async (force = false) => {
+    const now = Date.now();
+    if (!force && now - lastRefreshAt.current < MIN_REFRESH_MS) return;
+    lastRefreshAt.current = now;
+
     const supabase = createClient();
     const {
       data: { session },
@@ -41,24 +45,23 @@ export function useShellBadges(initial: ShellBadges): ShellBadges {
     });
   }, []);
 
-  const onPathOrVisible = useEffectEvent(() => {
-    void refreshBadges();
+  const onVisible = useEffectEvent(() => {
+    void refreshBadges(true);
   });
 
   useEffect(() => {
-    // Initial mount + subsequent in-app navigations (async badge fetch).
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch on route change
-    onPathOrVisible();
-  }, [pathname]);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial badge fetch
+    void refreshBadges(true);
+  }, [refreshBadges]);
 
   useEffect(() => {
-    function onVisible() {
+    function handleVisible() {
       if (document.visibilityState === "visible") {
-        onPathOrVisible();
+        onVisible();
       }
     }
-    document.addEventListener("visibilitychange", onVisible);
-    return () => document.removeEventListener("visibilitychange", onVisible);
+    document.addEventListener("visibilitychange", handleVisible);
+    return () => document.removeEventListener("visibilitychange", handleVisible);
   }, []);
 
   return badges;

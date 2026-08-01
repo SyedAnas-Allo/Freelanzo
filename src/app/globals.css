@@ -168,6 +168,28 @@
   animation: swipe-hint 1.35s ease-in-out infinite;
 }
 
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.skeleton {
+  background-image: linear-gradient(
+    105deg,
+    color-mix(in oklch, var(--primary) 6%, white) 0%,
+    color-mix(in oklch, var(--primary) 14%, white) 22%,
+    color-mix(in oklch, var(--primary) 28%, white) 45%,
+    color-mix(in oklch, var(--primary) 14%, white) 68%,
+    color-mix(in oklch, var(--primary) 6%, white) 100%
+  );
+  background-size: 220% 100%;
+  animation: skeleton-shimmer 1.35s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-swipe-hint {
     animation: none;

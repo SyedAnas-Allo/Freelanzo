@@ -47,6 +47,7 @@ function FreelancerHomeContent() {
   const [lng, setLng] = useState<number | null>(null);
   const [radius, setRadius] = useState(10);
   const [loading, setLoading] = useState(true);
+  const [hasLoaded, setHasLoaded] = useState(false);
 
   useEffect(() => {
     if (sessionLoading) return;
@@ -85,13 +86,6 @@ function FreelancerHomeContent() {
       const userCity = profile?.city ?? null;
       const located = userLat !== null && userLng !== null;
 
-      setLat(userLat);
-      setLng(userLng);
-      setRadius(userRadius);
-      setArea(userArea);
-      setCity(userCity);
-      setHasUserLocation(located);
-
       const nextNearby = located
         ? ((jobs ?? []) as (Job & {
             business_profiles: {
@@ -109,8 +103,15 @@ function FreelancerHomeContent() {
         : [];
 
       if (cancelled) return;
+      setLat(userLat);
+      setLng(userLng);
+      setRadius(userRadius);
+      setArea(userArea);
+      setCity(userCity);
+      setHasUserLocation(located);
       setNearby(nextNearby);
       setLoading(false);
+      setHasLoaded(true);
     }
 
     void load();
@@ -119,7 +120,8 @@ function FreelancerHomeContent() {
     };
   }, [sessionLoading, user, profile, category, router]);
 
-  if (sessionLoading || loading) {
+  // Only blank the first paint — keep previous list while category refetches.
+  if (sessionLoading || (!hasLoaded && loading)) {
     return <PageLoading />;
   }
 

@@ -21,8 +21,9 @@ export default function NotificationsPage() {
   const load = useCallback(async () => {
     const supabase = createClient();
     const {
-      data: { user },
-    } = await supabase.auth.getUser();
+      data: { session },
+    } = await supabase.auth.getSession();
+    const user = session?.user ?? null;
     if (!user) {
       router.push("/login");
       return;
@@ -60,8 +61,9 @@ export default function NotificationsPage() {
     setMarking(true);
     const supabase = createClient();
     const {
-      data: { user },
-    } = await supabase.auth.getUser();
+      data: { session },
+    } = await supabase.auth.getSession();
+    const user = session?.user ?? null;
     if (!user) {
       setMarking(false);
       return;

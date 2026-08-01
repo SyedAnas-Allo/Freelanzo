@@ -6,6 +6,7 @@ import { ChevronLeft, ChevronRight, Plus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { PageContent } from "@/components/layout/page-content";
 import { PageHeader } from "@/components/layout/page-header";
+import { PageLoading } from "@/components/page-loading";
 import { Button } from "@/components/ui/button";
 import { useWorkPhotos } from "@/hooks/use-work-photos";
 import { createClient } from "@/lib/supabase/client";
@@ -22,8 +23,9 @@ export default function ProfilePhotosPage() {
     async function load() {
       const supabase = createClient();
       const {
-        data: { user },
-      } = await supabase.auth.getUser();
+        data: { session },
+      } = await supabase.auth.getSession();
+      const user = session?.user ?? null;
       if (!user) {
         router.push("/login");
         return;
@@ -104,9 +106,7 @@ export default function ProfilePhotosPage() {
       />
 
       {!ready ? (
-        <p className="py-10 text-center text-sm text-muted-foreground">
-          Loading…
-        </p>
+        <PageLoading variant="page" />
       ) : (
         <div className="grid grid-cols-3 gap-1.5">
           <button

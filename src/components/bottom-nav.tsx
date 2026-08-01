@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   Briefcase,
   Home,
@@ -30,6 +30,7 @@ export function BottomNav({
   messageUnreadCount?: number;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
   const unread = messageUnreadCount;
 
   // Job detail, attendance, and chat thread are chrome-light (no bottom menu)
@@ -124,6 +125,8 @@ export function BottomNav({
                 <Link
                   href={item.href}
                   className="-mt-5 flex flex-col items-center gap-0.5"
+                  onPointerEnter={() => router.prefetch(item.href)}
+                  onTouchStart={() => router.prefetch(item.href)}
                 >
                   <span className="flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/30 ring-4 ring-background">
                     <Icon className="size-6" />
@@ -140,6 +143,8 @@ export function BottomNav({
             <li key={item.label}>
               <Link
                 href={item.href}
+                onPointerEnter={() => router.prefetch(item.href)}
+                onTouchStart={() => router.prefetch(item.href)}
                 className={cn(
                   "relative flex flex-col items-center gap-1 py-2 text-[10px] font-medium",
                   active ? "text-primary" : "text-muted-foreground",

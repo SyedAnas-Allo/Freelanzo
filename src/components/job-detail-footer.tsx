@@ -93,8 +93,9 @@ export function JobDetailFooter({
 
     const supabase = createClient();
     const {
-      data: { user },
-    } = await supabase.auth.getUser();
+      data: { session },
+    } = await supabase.auth.getSession();
+    const user = session?.user ?? null;
     if (!user) return null;
 
     const { data } = await supabase
@@ -137,8 +138,9 @@ export function JobDetailFooter({
 
     const supabase = createClient();
     const {
-      data: { user },
-    } = await supabase.auth.getUser();
+      data: { session },
+    } = await supabase.auth.getSession();
+    const user = session?.user ?? null;
     if (!user) {
       setLoading(false);
       toast.error("Please sign in");

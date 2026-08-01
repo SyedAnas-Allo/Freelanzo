@@ -6,8 +6,9 @@ import { createClient } from "@/lib/supabase/client";
 async function markRead(notificationId: string) {
   const supabase = createClient();
   const {
-    data: { user },
-  } = await supabase.auth.getUser();
+    data: { session },
+  } = await supabase.auth.getSession();
+  const user = session?.user ?? null;
   if (!user) return;
 
   await supabase

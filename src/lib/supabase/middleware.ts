@@ -36,9 +36,13 @@ export async function updateSession(request: NextRequest) {
     },
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Prefer getClaims() — verifies JWT locally (cached JWKS) instead of a
+  // network round-trip to Auth on every soft navigation.
+  const { data: claimsData } = await supabase.auth.getClaims();
+  const userId =
+    typeof claimsData?.claims?.sub === "string"
+      ? claimsData.claims.sub
+      : null;
 
   const path = request.nextUrl.pathname;
   const isAuthRoute =
@@ -55,13 +59,13 @@ export async function updateSession(request: NextRequest) {
     return supabaseResponse;
   }
 
-  if (!user && !isAuthRoute && path !== "/") {
+  if (!userId && !isAuthRoute && path !== "/") {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
   }
 
-  if (!user) {
+  if (!userId) {
     return supabaseResponse;
   }
 
@@ -82,7 +86,7 @@ export async function updateSession(request: NextRequest) {
     const { data: profile } = await supabase
       .from("profiles")
       .select("onboarding_complete, active_mode")
-      .eq("id", user.id)
+      .eq("id", userId)
       .maybeSingle();
 
     onboarded = !!profile?.onboarding_complete;

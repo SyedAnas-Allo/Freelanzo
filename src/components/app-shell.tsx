@@ -4,13 +4,14 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { AppHeader } from "@/components/app-header";
 import { BottomNav } from "@/components/bottom-nav";
+import { SessionProfileProvider } from "@/hooks/use-session-profile";
 import { useShellBadges } from "@/hooks/use-shell-refresh";
 import { readActiveModeCookie, setActiveModeCookie } from "@/lib/role-session";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import type { UserMode } from "@/types/database";
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+function AppShellInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [mode, setMode] = useState<UserMode>(
     () => readActiveModeCookie() ?? "freelancer",
@@ -22,13 +23,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     /^\/messages\/[^/]+$/.test(pathname);
 
   useEffect(() => {
+    const fromCookie = readActiveModeCookie();
+    if (fromCookie) {
+      setMode(fromCookie);
+      return;
+    }
     let cancelled = false;
-    async function syncMode() {
-      const fromCookie = readActiveModeCookie();
-      if (fromCookie) {
-        if (!cancelled) setMode(fromCookie);
-        return;
-      }
+    void (async () => {
       const supabase = createClient();
       const {
         data: { session },
@@ -45,8 +46,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         profile?.active_mode === "business" ? "business" : "freelancer";
       setMode(next);
       setActiveModeCookie(next);
-    }
-    void syncMode();
+    })();
     return () => {
       cancelled = true;
     };
@@ -63,5 +63,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         />
       ) : null}
     </div>
+  );
+}
+
+export function AppShell({ children }: { children: React.ReactNode }) {
+  return (
+    <SessionProfileProvider>
+      <AppShellInner>{children}</AppShellInner>
+    </SessionProfileProvider>
   );
 }

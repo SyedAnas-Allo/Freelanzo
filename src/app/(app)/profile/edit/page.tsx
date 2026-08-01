@@ -17,6 +17,7 @@ import { FormGroup } from "@/components/forms/form-group";
 import { TagListInput } from "@/components/forms/tag-list-input";
 import { PageContent } from "@/components/layout/page-content";
 import { PageHeader } from "@/components/layout/page-header";
+import { PageLoading } from "@/components/page-loading";
 import { LocationPickerLazy } from "@/components/location-picker-lazy";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -64,11 +65,7 @@ function EditProfileForm() {
   } = useEditProfile();
 
   if (loading) {
-    return (
-      <div className="p-8 text-center text-sm text-muted-foreground">
-        Loading…
-      </div>
-    );
+    return <PageLoading variant="form" />;
   }
 
   return (
@@ -269,13 +266,7 @@ function EditProfileForm() {
 
 export default function EditProfilePage() {
   return (
-    <Suspense
-      fallback={
-        <div className="p-8 text-center text-sm text-muted-foreground">
-          Loading…
-        </div>
-      }
-    >
+    <Suspense fallback={<PageLoading variant="form" />}>
       <EditProfileForm />
     </Suspense>
   );

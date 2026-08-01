@@ -74,8 +74,9 @@ export function ApplyButton({
     if (!jobRequirements) return true;
     const supabase = createClient();
     const {
-      data: { user },
-    } = await supabase.auth.getUser();
+      data: { session },
+    } = await supabase.auth.getSession();
+    const user = session?.user ?? null;
     if (!user) return true;
     const { data } = await supabase
       .from("profiles")
@@ -116,8 +117,9 @@ export function ApplyButton({
     }
     const supabase = createClient();
     const {
-      data: { user },
-    } = await supabase.auth.getUser();
+      data: { session },
+    } = await supabase.auth.getSession();
+    const user = session?.user ?? null;
     if (!user) {
       setLoading(false);
       toast.error("Please sign in");

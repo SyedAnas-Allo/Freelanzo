@@ -34,6 +34,8 @@ import {
 import { clearRoleReadyCookie } from "@/lib/role-session";
 import { shareOrCopy, SITE_URL } from "@/lib/share";
 import { createClient } from "@/lib/supabase/client";
+import { invalidateSessionProfile } from "@/hooks/use-session-profile";
+import { PageLoading } from "@/components/page-loading";
 import type { BusinessProfile, Profile } from "@/types/database";
 
 const EMPTY_FREELANCER_STATS: FreelancerProfileStats = {
@@ -80,8 +82,9 @@ export default function ProfilePage() {
     async function load() {
       const supabase = createClient();
       const {
-        data: { user },
-      } = await supabase.auth.getUser();
+        data: { session },
+      } = await supabase.auth.getSession();
+      const user = session?.user ?? null;
       if (!user) {
         router.push("/login");
         return;
@@ -116,9 +119,9 @@ export default function ProfilePage() {
   async function logout() {
     const supabase = createClient();
     clearRoleReadyCookie();
+    invalidateSessionProfile();
     await supabase.auth.signOut();
     router.push("/login");
-    router.refresh();
   }
 
   async function referFreelanzo() {
@@ -138,11 +141,7 @@ export default function ProfilePage() {
   }
 
   if (loading) {
-    return (
-      <div className="p-8 text-center text-sm text-muted-foreground">
-        Loading…
-      </div>
-    );
+    return <PageLoading variant="profile" />;
   }
 
   const isBusiness = profile?.active_mode === "business";
