@@ -5,8 +5,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 /**
- * Receives access/refresh tokens from the native deep-link handoff and
- * establishes the session inside the WebView cookie jar.
+ * Native handoff page (runs inside the app WebView).
+ * Prefers exchanging the OAuth `code` client-side so PKCE cookies from the
+ * WebView login start are available. Also supports legacy token handoff.
  */
 export default function NativeAuthPage() {
   const router = useRouter();
@@ -14,28 +15,42 @@ export default function NativeAuthPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    const code = searchParams.get("code");
     const access_token = searchParams.get("access_token");
     const refresh_token = searchParams.get("refresh_token");
-
-    if (!access_token || !refresh_token) {
-      setError("Missing session tokens");
-      return;
-    }
 
     let cancelled = false;
 
     void (async () => {
       const supabase = createClient();
-      const { error: sessionError } = await supabase.auth.setSession({
-        access_token,
-        refresh_token,
-      });
-      if (cancelled) return;
-      if (sessionError) {
-        setError(sessionError.message);
+
+      if (code) {
+        const { error: exchangeError } =
+          await supabase.auth.exchangeCodeForSession(code);
+        if (cancelled) return;
+        if (exchangeError) {
+          setError(exchangeError.message);
+          return;
+        }
+        router.replace("/continue");
         return;
       }
-      router.replace("/continue");
+
+      if (access_token && refresh_token) {
+        const { error: sessionError } = await supabase.auth.setSession({
+          access_token,
+          refresh_token,
+        });
+        if (cancelled) return;
+        if (sessionError) {
+          setError(sessionError.message);
+          return;
+        }
+        router.replace("/continue");
+        return;
+      }
+
+      setError("Missing sign-in credentials");
     })();
 
     return () => {

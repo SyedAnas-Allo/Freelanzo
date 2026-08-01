@@ -7,15 +7,13 @@ const APP_PACKAGE = "co.id.freelanzo.app";
 const APP_RETURN = "freelanzo://auth/session";
 
 /**
- * Chrome Custom Tabs often ignore HTTPS→custom-scheme 302 redirects and
- * silently drop oversized Intent URLs (JWTs). Bridge only the short OAuth
- * `code` back into the app; the WebView exchanges it.
+ * One deep-link open only. Prefer freelanzo:// (AuthSession listens for it);
+ * Intent URL is the visible button fallback.
  */
 export function nativeReturnHtml(appUrl: string): string {
   const intentPath = appUrl.replace(/^freelanzo:\/\//i, "");
   const intentUrl = `intent://${intentPath}#Intent;scheme=${APP_SCHEME};package=${APP_PACKAGE};end`;
   const safeApp = JSON.stringify(appUrl);
-  const safeIntent = JSON.stringify(intentUrl);
   const safeHref = intentUrl
     .replace(/&/g, "&amp;")
     .replace(/"/g, "&quot;")
@@ -44,27 +42,29 @@ export function nativeReturnHtml(appUrl: string): string {
 <body>
   <div>
     <p><strong>Sign-in complete</strong></p>
-    <p class="muted">Tap below if Freelanzo does not open automatically.</p>
+    <p class="muted">Opening Freelanzo…</p>
     <a class="btn" id="open" href="${safeHref}">Open Freelanzo</a>
-    <p class="muted" style="margin-top:16px"><a href="${safeFallback}">Use backup link</a></p>
+    <p class="muted" style="margin-top:16px"><a href="${safeFallback}">Backup link</a></p>
   </div>
   <script>
     (function () {
-      var appUrl = ${safeApp};
-      var intentUrl = ${safeIntent};
-      function go(url) {
-        try { window.location.href = url; } catch (e) {}
+      var done = false;
+      function openApp() {
+        if (done) return;
+        done = true;
+        window.location.href = ${safeApp};
       }
-      go(intentUrl);
-      setTimeout(function () { go(appUrl); }, 350);
-      setTimeout(function () { go(intentUrl); }, 800);
+      openApp();
     })();
   </script>
 </body>
 </html>`;
 }
 
-function isNativeRequest(searchParams: URLSearchParams, forceNative: boolean): boolean {
+function isNativeRequest(
+  searchParams: URLSearchParams,
+  forceNative: boolean,
+): boolean {
   if (forceNative) return true;
   return searchParams.get("native") === "1";
 }
@@ -82,8 +82,7 @@ export async function finishNativeOAuth(
     return NextResponse.redirect(`${origin}/login`);
   }
 
-  // Native: do NOT exchange here (Custom Tab cookie jar ≠ WebView).
-  // Hand the short code to the app; WebView hits /auth/callback to exchange.
+  // Native Custom Tab: do not exchange (no PKCE cookies here). Bridge code only.
   if (native) {
     const appUrl = `${APP_RETURN}?code=${encodeURIComponent(code)}`;
     return new NextResponse(nativeReturnHtml(appUrl), {
@@ -95,7 +94,7 @@ export async function finishNativeOAuth(
     });
   }
 
-  // Web browser: exchange and continue.
+  // Desktop / WebView callback: exchange on the server.
   const supabase = await createClient();
   const { error } = await supabase.auth.exchangeCodeForSession(code);
   if (!error) {

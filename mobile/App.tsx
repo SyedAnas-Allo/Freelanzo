@@ -1,11 +1,6 @@
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  BackHandler,
-  Platform,
-  StyleSheet,
-  View,
-} from "react-native";
+import { BackHandler, Platform, StyleSheet, View } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import {
   WebView,
@@ -28,6 +23,7 @@ import {
 export default function App() {
   const webRef = useRef<WebView>(null);
   const oauthLock = useRef(false);
+  const handledAuthUrl = useRef<string | null>(null);
   const [uri, setUri] = useState(WEB_URL);
   const [canGoBack, setCanGoBack] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -45,19 +41,36 @@ export default function App() {
     `;
   }, [appReturn]);
 
-  useEffect(() => {
-    console.log("App return deep link:", appReturn);
-  }, [appReturn]);
+  const applyAuthReturn = useCallback((rawUrl: string) => {
+    try {
+      const next = sessionDeepLinkToWebUrl(rawUrl);
+      if (!next) return false;
+      if (handledAuthUrl.current === next) return true;
+      handledAuthUrl.current = next;
+      oauthLock.current = false;
+      setUri(next);
+      setLoading(true);
+      return true;
+    } catch (e) {
+      console.warn("applyAuthReturn failed", e);
+      return false;
+    }
+  }, []);
 
   const finishOAuth = useCallback(async (oauthUrl: string) => {
     if (oauthLock.current) return;
     oauthLock.current = true;
+    handledAuthUrl.current = null;
     try {
       const next = await openOAuthInSystemBrowser(oauthUrl);
-      if (next) {
+      // Linking may have already applied the same URL while AuthSession was open.
+      if (next && handledAuthUrl.current !== next) {
+        handledAuthUrl.current = next;
         setUri(next);
         setLoading(true);
       }
+    } catch (e) {
+      console.warn("finishOAuth failed", e);
     } finally {
       oauthLock.current = false;
     }
@@ -72,20 +85,17 @@ export default function App() {
 
   useEffect(() => {
     const onUrl = ({ url }: { url: string }) => {
-      const next = sessionDeepLinkToWebUrl(url);
-      if (next) {
-        void WebBrowser.dismissAuthSession();
-        oauthLock.current = false;
-        setUri(next);
-        setLoading(true);
-      }
+      if (!url) return;
+      applyAuthReturn(url);
     };
     const sub = Linking.addEventListener("url", onUrl);
-    void Linking.getInitialURL().then((url) => {
-      if (url) onUrl({ url });
-    });
+    void Linking.getInitialURL()
+      .then((url) => {
+        if (url) onUrl({ url });
+      })
+      .catch(() => undefined);
     return () => sub.remove();
-  }, []);
+  }, [applyAuthReturn]);
 
   useEffect(() => {
     if (Platform.OS !== "android") return;
@@ -102,6 +112,16 @@ export default function App() {
   function handleShouldStartLoad(request: ShouldStartLoadRequest): boolean {
     const { url } = request;
     if (!url || url === "about:blank") return true;
+
+    if (
+      url.startsWith("freelanzo:") ||
+      url.startsWith("intent:") ||
+      url.startsWith("exp:") ||
+      url.startsWith("exps:")
+    ) {
+      applyAuthReturn(url);
+      return false;
+    }
 
     if (
       url.startsWith("tel:") ||
@@ -151,6 +171,9 @@ export default function App() {
               setCanGoBack(nav.canGoBack);
             }}
             onMessage={handleMessage}
+            onError={(e) => {
+              console.warn("WebView error", e.nativeEvent);
+            }}
             geolocationEnabled
             mediaCapturePermissionGrantType="grant"
             allowsInlineMediaPlayback
@@ -160,7 +183,7 @@ export default function App() {
             domStorageEnabled
             javaScriptEnabled
             setSupportMultipleWindows={false}
-            originWhitelist={["*"]}
+            originWhitelist={["https://*", "http://*"]}
             startInLoadingState
             onLoadStart={() => setLoading(true)}
             onLoadEnd={() => setLoading(false)}

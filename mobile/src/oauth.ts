@@ -4,16 +4,11 @@ import { WEB_URL } from "./config";
 
 WebBrowser.maybeCompleteAuthSession();
 
-/** Deep link AuthSession listens for. */
 export function getAppReturnDeepLink(): string {
   return "freelanzo://auth/session";
 }
 
-/**
- * Use the already-documented /auth/callback path with ?native=1.
- * A brand-new path is often missing from Supabase Redirect URLs, which
- * dumps the user on the website with no way back into the app.
- */
+/** Allowlisted path + native flag (see Supabase Redirect URLs). */
 export function getWebsiteNativeOAuthRedirect(): string {
   return `${WEB_URL}/auth/callback?native=1`;
 }
@@ -79,11 +74,16 @@ function parseDeepLinkParams(url: string): URLSearchParams | null {
 }
 
 /**
- * freelanzo://auth/session?code=… → WebView /auth/callback?code=…
- * (or legacy token handoff → /auth/native)
+ * freelanzo://auth/session?code=… → WebView /auth/native?code=…
+ * Client page exchanges the code where PKCE cookies live.
  */
 export function sessionDeepLinkToWebUrl(url: string): string | null {
   try {
+    if (/^intent:/i.test(url)) {
+      const pathAndQuery = url.replace(/^intent:\/\//i, "").split("#")[0] ?? "";
+      url = `freelanzo://${pathAndQuery}`;
+    }
+
     if (!/^freelanzo:\/\//i.test(url) && !/^exp[s]?:\/\//i.test(url)) {
       return null;
     }
@@ -93,9 +93,8 @@ export function sessionDeepLinkToWebUrl(url: string): string | null {
 
     const code = params.get("code");
     if (code) {
-      const target = new URL(`${WEB_URL}/auth/callback`);
+      const target = new URL(`${WEB_URL}/auth/native`);
       target.searchParams.set("code", code);
-      target.searchParams.set("next", "/continue");
       return target.toString();
     }
 
@@ -114,43 +113,42 @@ export function sessionDeepLinkToWebUrl(url: string): string | null {
   }
 }
 
-/** If AuthSession captured an https callback with ?code=, finish in WebView. */
 export function codeUrlToWebsiteCallback(url: string): string | null {
   try {
     if (!/^https?:/i.test(url)) return null;
     const parsed = new URL(url);
     const code = parsed.searchParams.get("code");
     if (!code) return null;
-    // If this is already our native bridge page, ignore — deep link handles it.
     if (parsed.searchParams.get("native") === "1") return null;
-    const target = new URL(`${WEB_URL}/auth/callback`);
+    const target = new URL(`${WEB_URL}/auth/native`);
     target.searchParams.set("code", code);
-    target.searchParams.set("next", "/continue");
     return target.toString();
   } catch {
     return null;
   }
 }
 
-/**
- * System browser OAuth. Listen for freelanzo:// — Android does not reliably
- * close Custom Tabs on plain HTTPS callbacks without verified App Links.
- */
 export async function openOAuthInSystemBrowser(
   url: string,
 ): Promise<string | null> {
   const authorizeUrl = withWebsiteNativeOAuthRedirect(url);
   const returnUrl = getAppReturnDeepLink();
 
-  const result = await WebBrowser.openAuthSessionAsync(authorizeUrl, returnUrl, {
-    preferEphemeralSession: false,
-  });
-
-  if (result.type === "success" && result.url) {
-    return (
-      sessionDeepLinkToWebUrl(result.url) ??
-      codeUrlToWebsiteCallback(result.url)
+  try {
+    const result = await WebBrowser.openAuthSessionAsync(
+      authorizeUrl,
+      returnUrl,
+      { preferEphemeralSession: false },
     );
+
+    if (result.type === "success" && result.url) {
+      return (
+        sessionDeepLinkToWebUrl(result.url) ??
+        codeUrlToWebsiteCallback(result.url)
+      );
+    }
+  } catch (e) {
+    console.warn("openAuthSessionAsync failed", e);
   }
   return null;
 }

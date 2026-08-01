@@ -1,26 +1,26 @@
 # Freelanzo mobile (Expo WebView shell)
 
-## Google sign-in
+## Google login flow
 
-1. System browser / Custom Tab opens Google
-2. Lands on `/auth/callback?native=1` with a short `code`
-3. HTML bridge opens `freelanzo://auth/session?code=…`
-4. App loads `/auth/callback?code=…` in the WebView and finishes login
+1. WebView starts Google OAuth (PKCE cookies stay in the WebView)
+2. System browser completes Google → `/auth/callback?native=1`
+3. Website opens `freelanzo://auth/session?code=…` once
+4. App loads `/auth/native?code=…` and exchanges the code in the WebView
+5. You land on `/continue`
 
-If the browser stays open, tap **Open Freelanzo**.
+## Supabase Redirect URLs (required)
 
-## Supabase (required)
-
-Authentication → URL Configuration:
-
-- **Site URL:** `https://freelanzo-three.vercel.app`
-- **Redirect URLs:**
+- Site URL: `https://freelanzo-three.vercel.app`
+- Redirect URLs:
   - `https://freelanzo-three.vercel.app/auth/callback`
-  - `https://freelanzo-three.vercel.app/**` (recommended)
+  - `https://freelanzo-three.vercel.app/**`
   - `freelanzo://**`
 
-## Test
+## Build
 
-Use the installed APK / `npx expo run:android` — **not Expo Go**.
+```bash
+cd mobile
+eas build -p android --profile preview
+```
 
-Website changes must be deployed to Vercel before testing login.
+Use the installed APK — not Expo Go.

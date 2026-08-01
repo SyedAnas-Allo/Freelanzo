@@ -48,3 +48,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local mobile artifacts
+/mobile/*.apk
+/mobile/*.aab
+/mobile/apk-build.log
