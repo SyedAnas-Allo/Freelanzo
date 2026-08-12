@@ -100,7 +100,7 @@ function ReviewsPageInner() {
   const maxBucket = Math.max(1, ...buckets.map((b) => b.count));
 
   return (
-    <div className="px-4 py-4 pb-8">
+    <div className="px-4 pb-8">
       <PageBack href="/profile" />
       <div className="mt-1 flex items-start justify-between gap-3">
         <h1 className="text-xl font-extrabold tracking-tight">

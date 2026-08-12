@@ -6,7 +6,7 @@ import type { AttendanceRecordView } from "@/components/attendance-record-card";
 import { BusinessAttendanceClient } from "@/components/business-attendance-client";
 import { PageLoading } from "@/components/page-loading";
 import { useRouter } from "@/hooks/use-app-router";
-import { fetchSessionProfile } from "@/hooks/use-session-profile";
+import { fetchBusinessSession } from "@/hooks/use-session-profile";
 import { createClient } from "@/lib/supabase/client";
 import { localDateISO, jobWorkDates, pickAttendanceDay } from "@/lib/work-dates";
 import type { AttendanceKind, AttendanceOtp, Job } from "@/types/database";
@@ -38,7 +38,7 @@ async function loadAttendanceData(
   | { ok: true; data: AttendancePageData }
   | { ok: false; reason: "setup" | "not_found" }
 > {
-  const { business } = await fetchSessionProfile();
+  const { business } = await fetchBusinessSession();
   if (!business) return { ok: false, reason: "setup" };
 
   const kind: AttendanceKind =

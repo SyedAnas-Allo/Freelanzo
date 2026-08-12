@@ -17,11 +17,11 @@ export default function NativeAuthPage() {
   const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const code = searchParams.get("code");
-    const access_token = searchParams.get("access_token");
-    const refresh_token = searchParams.get("refresh_token");
+  const code = searchParams.get("code");
+  const accessToken = searchParams.get("access_token");
+  const refreshToken = searchParams.get("refresh_token");
 
+  useEffect(() => {
     let cancelled = false;
 
     void (async () => {
@@ -37,11 +37,11 @@ export default function NativeAuthPage() {
         return;
       }
 
-      if (access_token && refresh_token) {
+      if (accessToken && refreshToken) {
         const supabase = createClient();
         const { error: sessionError } = await supabase.auth.setSession({
-          access_token,
-          refresh_token,
+          access_token: accessToken,
+          refresh_token: refreshToken,
         });
         if (cancelled) return;
         if (sessionError) {
@@ -59,7 +59,7 @@ export default function NativeAuthPage() {
     return () => {
       cancelled = true;
     };
-  }, [router, searchParams]);
+  }, [router, code, accessToken, refreshToken]);
 
   return (
     <div className="flex min-h-dvh items-center justify-center bg-background px-6 text-center">

@@ -31,6 +31,7 @@ import { PaymentResponsibilityCallout } from "@/components/payment-responsibilit
 import { ReferJobButton } from "@/components/refer-button";
 import { shiftLabel } from "@/components/shift-timeline";
 import { SosCallout } from "@/components/sos-callout";
+import { MetaPill } from "@/components/ui/meta-pill";
 import { JobCategoryIcon } from "@/features/jobs/components/job-category-icon";
 import { formatJobDateRelative } from "@/features/jobs/formatters/job-date";
 import {
@@ -402,71 +403,72 @@ export default function JobDetailPage() {
         <PageBack href="/freelancer" />
         <ReferJobButton jobId={typedJob.id} jobTitle={typedJob.title} />
       </div>
-      <div className="flex gap-3">
+      <div className="flex items-start gap-3">
         <JobCategoryIcon
           category={typedJob.category}
           className="size-12 rounded-xl"
           iconClassName="size-5"
         />
         <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <h1 className="text-[17px] font-extrabold leading-snug tracking-tight">
-                {typedJob.title}
-              </h1>
-              {typedJob.business_profiles.verified ? (
-                <span className="mt-1 inline-flex h-5 items-center gap-1 rounded-full bg-primary/10 px-2 text-[10px] font-semibold text-primary">
-                  <BadgeCheck className="size-3" />
-                  Verified Business
-                </span>
-              ) : null}
-              <p className="mt-1 text-[13px] font-bold text-primary">
-                <Link
-                  href={`/freelancer/businesses/${typedJob.business_id}?job=${typedJob.id}&from=${encodeURIComponent(`/freelancer/jobs/${typedJob.id}`)}`}
-                >
-                  {typedJob.business_profiles.business_name}
-                </Link>
-              </p>
-            </div>
-            <div className="shrink-0 text-right">
-              <p className="text-[15px] font-extrabold leading-tight text-emerald-600">
-                {formatPay(jobDayTotal(typedJob))}
-                <span className="text-[11px] font-bold"> / Day</span>
-              </p>
-              {multiDay ? (
-                <p className="mt-0.5 text-[10px] font-semibold text-emerald-700/80">
-                  {formatPay(
-                    jobEngagementTotal({
-                      ...typedJob,
-                      work_dates: dates,
-                    }),
-                  )}{" "}
-                  total · paid once
-                </p>
-              ) : typedJob.food_allowance_inr > 0 ||
-                typedJob.travel_allowance_inr > 0 ? (
-                <p className="mt-0.5 text-[10px] font-medium leading-snug text-emerald-700/80">
-                  {formatJobPay(typedJob)}
-                </p>
-              ) : null}
-              <div className="mt-2 inline-flex flex-col items-end gap-1 rounded-xl bg-primary/10 px-2.5 py-1.5 ring-1 ring-primary/20">
-                <p
-                  className="flex items-center gap-1.5 text-[12px] font-extrabold leading-none text-foreground"
-                  suppressHydrationWarning
-                >
-                  <Calendar className="size-3.5 shrink-0 text-primary" />
-                  {multiDay
-                    ? formatWorkDatesLabel(dates)
-                    : formatJobDateRelative(typedJob.job_date)}
-                </p>
-                <p className="flex items-center gap-1.5 text-[12px] font-extrabold leading-none text-foreground">
-                  <Clock className="size-3.5 shrink-0 text-primary" />
-                  {formatTime(typedJob.start_time)} –{" "}
-                  {formatTime(typedJob.end_time)}
-                </p>
-              </div>
-            </div>
-          </div>
+          <h1 className="text-pretty text-[17px] font-extrabold leading-snug tracking-tight [overflow-wrap:anywhere]">
+            {typedJob.title}
+          </h1>
+          <p className="mt-1 flex items-center gap-1 text-[13px] font-bold text-primary">
+            <Link
+              href={`/freelancer/businesses/${typedJob.business_id}?job=${typedJob.id}&from=${encodeURIComponent(`/freelancer/jobs/${typedJob.id}`)}`}
+              className="min-w-0 text-pretty [overflow-wrap:anywhere]"
+            >
+              {typedJob.business_profiles.business_name}
+            </Link>
+            {typedJob.business_profiles.verified ? (
+              <BadgeCheck
+                aria-label="Verified business"
+                className="size-3.5 shrink-0 fill-sky-500 text-white"
+              />
+            ) : null}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-end justify-between gap-x-3 gap-y-2">
+        <div className="inline-flex max-w-full flex-col gap-1 rounded-xl bg-primary/10 px-2.5 py-1.5 ring-1 ring-primary/20">
+          <p
+            className="flex items-center gap-1.5 text-[12px] font-extrabold leading-none text-primary"
+            suppressHydrationWarning
+          >
+            <Calendar className="size-3.5 shrink-0" />
+            <span className="min-w-0 [overflow-wrap:anywhere]">
+              {multiDay
+                ? formatWorkDatesLabel(dates)
+                : formatJobDateRelative(typedJob.job_date)}
+            </span>
+          </p>
+          <p className="flex items-center gap-1.5 text-[12px] font-extrabold leading-none text-primary">
+            <Clock className="size-3.5 shrink-0" />
+            {formatTime(typedJob.start_time)} – {formatTime(typedJob.end_time)}
+          </p>
+        </div>
+        <div className="shrink-0 text-right">
+          <p className="text-[15px] font-extrabold leading-tight text-emerald-600 tabular-nums">
+            {formatPay(jobDayTotal(typedJob))}
+            <span className="text-[11px] font-bold"> / Day</span>
+          </p>
+          {multiDay ? (
+            <p className="mt-0.5 text-[10px] font-semibold text-emerald-700/80">
+              {formatPay(
+                jobEngagementTotal({
+                  ...typedJob,
+                  work_dates: dates,
+                }),
+              )}{" "}
+              total · paid once
+            </p>
+          ) : typedJob.food_allowance_inr > 0 ||
+            typedJob.travel_allowance_inr > 0 ? (
+            <p className="mt-0.5 text-[10px] font-medium leading-snug text-emerald-700/80">
+              {formatJobPay(typedJob)}
+            </p>
+          ) : null}
         </div>
       </div>
 
@@ -484,7 +486,7 @@ export default function JobDetailPage() {
             {distance !== null ? (
               <span className="font-semibold text-foreground/80">
                 {" "}
-                • {distance.toFixed(1)} km
+                · {distance.toFixed(1)} km
               </span>
             ) : null}
           </span>
@@ -501,12 +503,12 @@ export default function JobDetailPage() {
       </div>
 
       <div className="mt-2.5 flex flex-wrap gap-1.5">
-        <span className="inline-flex h-5 items-center rounded-full bg-primary/10 px-2 text-[10px] font-semibold text-primary">
+        <MetaPill tone="violet" className="h-5 px-2 text-[11px]">
           {typedJob.skilled ? "Skilled" : "Unskilled"}
-        </span>
-        <span className="inline-flex h-5 items-center rounded-full bg-primary/10 px-2 text-[10px] font-semibold text-primary">
+        </MetaPill>
+        <MetaPill tone="violet" className="h-5 px-2 text-[11px]">
           {shiftLabel(typedJob.start_time)} Shift
-        </span>
+        </MetaPill>
       </div>
 
       {typedApp && lifecycle ? (

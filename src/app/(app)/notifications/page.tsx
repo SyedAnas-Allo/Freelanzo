@@ -89,7 +89,7 @@ export default function NotificationsPage() {
   const earlier = items.filter((n) => new Date(n.created_at).getTime() < dayAgo);
 
   return (
-    <div className="px-4 py-4">
+    <div className="px-4">
       <PageBack href={homeHref} />
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-extrabold">Notifications</h1>

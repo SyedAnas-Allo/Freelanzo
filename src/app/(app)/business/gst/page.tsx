@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { refreshSessionProfile } from "@/hooks/use-session-profile";
 import {
   hasGstin,
   isValidGstinFormat,
@@ -82,8 +83,8 @@ export default function BusinessGstPage() {
     }
     setSavedGstin(normalized);
     toast.success(normalized ? "GSTIN saved" : "GSTIN removed");
+    await refreshSessionProfile();
     router.push("/profile");
-    router.refresh();
   }
 
   if (loading) {

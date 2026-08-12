@@ -10,11 +10,15 @@
 
 ## Supabase Redirect URLs (required)
 
-- Site URL: `https://freelanzo-three.vercel.app`
-- Redirect URLs:
+- Site URL: `https://freelanzo-three.vercel.app` (keep production as Site URL)
+- Redirect URLs (add **all** of these):
+  - `http://localhost:3000/auth/callback`
+  - `http://localhost:3000/**`
   - `https://freelanzo-three.vercel.app/auth/callback`
   - `https://freelanzo-three.vercel.app/**`
   - `freelanzo://**`
+
+Without the localhost entries, Google login from local Next.js lands on production.
 
 ## Build
 

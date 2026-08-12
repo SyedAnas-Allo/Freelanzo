@@ -111,7 +111,7 @@ export default function BusinessHomePage() {
 
   if (!business) {
     return (
-      <div className="px-4 py-4">
+      <div className="px-4">
         <h1 className="text-xl font-extrabold tracking-tight">
           {greetingForNow()},{" "}
           <span className="font-semibold">
@@ -162,7 +162,7 @@ export default function BusinessHomePage() {
   ];
 
   return (
-    <div className="px-4 py-4">
+    <div className="px-4">
       <p className="flex items-center gap-1.5 text-sm">
         <MapPin className="size-3.5 shrink-0 text-primary" />
         <span className="font-semibold text-foreground">

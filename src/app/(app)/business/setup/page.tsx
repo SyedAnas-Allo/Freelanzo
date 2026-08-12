@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { refreshSessionProfile } from "@/hooks/use-session-profile";
 import { isValidGstinFormat, normalizeGstin } from "@/lib/gstin";
 import { setActiveModeCookie } from "@/lib/role-session";
 import { createClient } from "@/lib/supabase/client";
@@ -64,6 +65,7 @@ function BusinessSetupForm() {
         .eq("owner_id", user.id)
         .maybeSingle();
       if (data) {
+        await refreshSessionProfile();
         router.replace(returnTo ?? "/business/edit");
         return;
       }
@@ -114,7 +116,9 @@ function BusinessSetupForm() {
       return;
     }
     toast.success("Business profile created");
-    router.refresh();
+    // Must refresh shared session before gated routes (e.g. /business/jobs/new)
+    // or stale business:null + returnTo ping-pongs forever.
+    await refreshSessionProfile();
     router.push(returnTo ?? "/business");
   }
 

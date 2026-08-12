@@ -1,6 +1,14 @@
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, BackHandler, Platform, StyleSheet, View } from "react-native";
+import {
+  Alert,
+  AppState,
+  type AppStateStatus,
+  BackHandler,
+  Platform,
+  StyleSheet,
+  View,
+} from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import {
   WebView,
@@ -10,7 +18,7 @@ import {
 import type { ShouldStartLoadRequest } from "react-native-webview/lib/WebViewTypes";
 import * as Linking from "expo-linking";
 import * as WebBrowser from "expo-web-browser";
-import { BRAND, WEB_URL } from "./src/config";
+import { APP_USER_AGENT_TOKEN, BRAND, WEB_URL } from "./src/config";
 import { SplashScreen } from "./src/SplashScreen";
 import {
   getAppReturnDeepLink,
@@ -40,6 +48,7 @@ export default function App() {
   const oauthLock = useRef(false);
   const handledAuthUrl = useRef<string | null>(null);
   const booted = useRef(false);
+  const appState = useRef<AppStateStatus>(AppState.currentState);
   const [uri, setUri] = useState(WEB_URL);
   const [canGoBack, setCanGoBack] = useState(false);
   /** Full splash — cold start only. */
@@ -51,14 +60,20 @@ export default function App() {
 
   const injectedJavaScript = useMemo(() => {
     const redirect = JSON.stringify(appReturn);
-    // Intercept tel:/mailto:/sms: clicks in-page and hand them to native
-    // Linking — WKWebView often ignores scheme navigations entirely.
+    // Intercept tel:/mailto:/sms: and target=_blank / maps — WKWebView
+    // often ignores scheme navigations and blocks window.open when
+    // setSupportMultipleWindows is false.
     return `
       (function () {
         window.__FREELANZO_NATIVE__ = true;
         window.__FREELANZO_OAUTH_REDIRECT__ = ${redirect};
-        if (!window.__FREELANZO_DIAL_HOOK__) {
-          window.__FREELANZO_DIAL_HOOK__ = true;
+        if (!window.__FREELANZO_LINK_HOOK__) {
+          window.__FREELANZO_LINK_HOOK__ = true;
+          function postOpen(url) {
+            if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+              window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'OPEN_URL', url: url }));
+            }
+          }
           document.addEventListener('click', function (e) {
             var el = e.target;
             while (el && el.tagName !== 'A') el = el.parentElement;
@@ -67,9 +82,17 @@ export default function App() {
             if (/^(tel|mailto|sms|whatsapp):/i.test(href)) {
               e.preventDefault();
               e.stopPropagation();
-              if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
-                window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'OPEN_URL', url: href }));
-              }
+              postOpen(href);
+              return;
+            }
+            if (!/^https?:/i.test(href)) return;
+            var blank = (el.getAttribute('target') || '').toLowerCase() === '_blank';
+            var maps = /google\\.[^/]+\\/maps|maps\\.google\\.|maps\\.apple\\.com|openstreetmap\\.org/i.test(href);
+            var wa = /wa\\.me\\//i.test(href) || /api\\.whatsapp\\.com\\//i.test(href);
+            if (blank || maps || wa) {
+              e.preventDefault();
+              e.stopPropagation();
+              postOpen(href);
             }
           }, true);
         }
@@ -77,6 +100,18 @@ export default function App() {
       })();
     `;
   }, [appReturn]);
+
+  const notifyWebForeground = useCallback(() => {
+    webRef.current?.injectJavaScript(`
+      try {
+        window.dispatchEvent(new Event('freelanzo-foreground'));
+        if (typeof document !== 'undefined') {
+          document.dispatchEvent(new Event('visibilitychange'));
+        }
+      } catch (e) {}
+      true;
+    `);
+  }, []);
 
   const dismissSplash = useCallback(() => {
     booted.current = true;
@@ -151,6 +186,21 @@ export default function App() {
     return () => sub.remove();
   }, [applyAuthReturn]);
 
+  // WebView suspends websockets in background — poke the page on resume.
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (next) => {
+      const prev = appState.current;
+      appState.current = next;
+      if (
+        next === "active" &&
+        (prev === "background" || prev === "inactive")
+      ) {
+        notifyWebForeground();
+      }
+    });
+    return () => sub.remove();
+  }, [notifyWebForeground]);
+
   useEffect(() => {
     if (Platform.OS !== "android") return;
     const sub = BackHandler.addEventListener("hardwareBackPress", () => {
@@ -192,6 +242,16 @@ export default function App() {
       return false;
     }
 
+    // Keep Freelanzo pages in the WebView; open maps / WhatsApp outside.
+    if (
+      /^https?:/i.test(url) &&
+      (/google\.[^/]+\/maps|maps\.google\.|maps\.apple\.com/i.test(url) ||
+        /wa\.me\/|api\.whatsapp\.com\//i.test(url))
+    ) {
+      void openExternalScheme(url);
+      return false;
+    }
+
     return true;
   }
 
@@ -205,7 +265,7 @@ export default function App() {
         void finishOAuth(data.url);
         return;
       }
-      // Dialer / mail / sms from web — more reliable than WebView navigation.
+      // Dialer / mail / maps / sms from web — more reliable than WebView navigation.
       if (data.type === "OPEN_URL" && data.url) {
         void openExternalScheme(data.url);
       }
@@ -216,67 +276,75 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <SafeAreaView style={styles.flex} edges={["top", "bottom"]}>
-        <StatusBar style="dark" />
-        <View style={styles.flex}>
-          <WebView
-            ref={webRef}
-            source={{ uri }}
-            style={styles.flex}
-            injectedJavaScriptBeforeContentLoaded={injectedJavaScript}
-            injectedJavaScript={injectedJavaScript}
-            onShouldStartLoadWithRequest={handleShouldStartLoad}
-            onNavigationStateChange={(nav: WebViewNavigation) => {
-              setCanGoBack(nav.canGoBack);
-              if (!nav.loading) {
+      <View style={styles.flex}>
+        <SafeAreaView style={styles.flex} edges={["top", "bottom"]}>
+          <StatusBar style="dark" />
+          <View style={styles.flex}>
+            <WebView
+              ref={webRef}
+              source={{ uri }}
+              style={styles.flex}
+              applicationNameForUserAgent={` ${APP_USER_AGENT_TOKEN}`}
+              injectedJavaScriptBeforeContentLoaded={injectedJavaScript}
+              injectedJavaScript={injectedJavaScript}
+              onShouldStartLoadWithRequest={handleShouldStartLoad}
+              onNavigationStateChange={(nav: WebViewNavigation) => {
+                setCanGoBack(nav.canGoBack);
+                if (!nav.loading) {
+                  setPageLoading(false);
+                  if (!booted.current) dismissSplash();
+                }
+              }}
+              onMessage={handleMessage}
+              onOpenWindow={(e) => {
+                const targetUrl = e.nativeEvent.targetUrl;
+                if (targetUrl) void openExternalScheme(targetUrl);
+              }}
+              onError={(e) => {
+                console.warn("WebView error", e.nativeEvent);
                 setPageLoading(false);
-                if (!booted.current) dismissSplash();
-              }
-            }}
-            onMessage={handleMessage}
-            onError={(e) => {
-              console.warn("WebView error", e.nativeEvent);
-              setPageLoading(false);
-              dismissSplash();
-            }}
-            geolocationEnabled
-            mediaCapturePermissionGrantType="grant"
-            allowsInlineMediaPlayback
-            mediaPlaybackRequiresUserAction={false}
-            sharedCookiesEnabled
-            thirdPartyCookiesEnabled
-            domStorageEnabled
-            javaScriptEnabled
-            setSupportMultipleWindows={false}
-            // tel:/mailto: must be listed or the WebView swallows them before
-            // onShouldStartLoadWithRequest can hand off to Linking.
-            originWhitelist={[
-              "https://*",
-              "http://*",
-              "tel:*",
-              "mailto:*",
-              "sms:*",
-              "whatsapp:*",
-            ]}
-            onLoadStart={() => {
-              if (booted.current) setPageLoading(true);
-            }}
-            onLoadEnd={() => {
-              setPageLoading(false);
-              dismissSplash();
-            }}
-            pullToRefreshEnabled={Platform.OS === "android"}
-          />
+                dismissSplash();
+              }}
+              geolocationEnabled
+              mediaCapturePermissionGrantType="grant"
+              allowsInlineMediaPlayback
+              mediaPlaybackRequiresUserAction={false}
+              sharedCookiesEnabled
+              thirdPartyCookiesEnabled
+              domStorageEnabled
+              javaScriptEnabled
+              setSupportMultipleWindows
+              // tel:/mailto: must be listed or the WebView swallows them before
+              // onShouldStartLoadWithRequest can hand off to Linking.
+              originWhitelist={[
+                "https://*",
+                "http://*",
+                "tel:*",
+                "mailto:*",
+                "sms:*",
+                "whatsapp:*",
+              ]}
+              onLoadStart={() => {
+                if (booted.current) setPageLoading(true);
+              }}
+              onLoadEnd={() => {
+                setPageLoading(false);
+                dismissSplash();
+              }}
+              pullToRefreshEnabled={false}
+            />
 
-          {pageLoading && !showSplash ? (
-            <View style={styles.progressTrack} pointerEvents="none">
-              <View style={styles.progressBar} />
-            </View>
-          ) : null}
+            {pageLoading && !showSplash ? (
+              <View style={styles.progressTrack} pointerEvents="none">
+                <View style={styles.progressBar} />
+              </View>
+            ) : null}
+          </View>
+        </SafeAreaView>
 
-          {showSplash ? <SplashScreen /> : null}
-        </View>
-      </SafeAreaView>
+        {/* Outside SafeAreaView so the poster is truly edge-to-edge. */}
+        {showSplash ? <SplashScreen /> : null}
+      </View>
     </SafeAreaProvider>
   );
 }

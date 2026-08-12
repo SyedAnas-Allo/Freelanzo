@@ -29,7 +29,12 @@ function JobHistoryContent() {
   const searchParams = useSearchParams();
   const tab = searchParams.get("tab") ?? "all";
   const q = searchParams.get("q") ?? "";
-  const { user, business, loading: sessionLoading } = useSessionProfile();
+  const {
+    user,
+    business,
+    loading: sessionLoading,
+    reload,
+  } = useSessionProfile();
   const [allJobs, setAllJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -39,25 +44,38 @@ function JobHistoryContent() {
       router.replace("/login");
       return;
     }
-    if (!business) {
-      router.replace("/business/setup");
-      return;
-    }
+
+    let cancelled = false;
 
     async function load() {
+      let biz = business;
+      if (!biz) {
+        const next = await reload();
+        if (cancelled) return;
+        biz = next.business;
+        if (!biz) {
+          router.replace("/business/setup");
+          return;
+        }
+      }
+
       const supabase = createClient();
       const { data: jobs } = await supabase
         .from("jobs")
         .select("*")
-        .eq("business_id", business!.id)
+        .eq("business_id", biz.id)
         .order("job_date", { ascending: false });
 
+      if (cancelled) return;
       setAllJobs((jobs ?? []) as Job[]);
       setLoading(false);
     }
 
     void load();
-  }, [sessionLoading, user, business, router]);
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionLoading, user, business, reload, router]);
 
   if (sessionLoading || loading || !business) {
     return <PageLoading />;

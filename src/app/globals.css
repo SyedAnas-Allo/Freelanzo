@@ -211,6 +211,24 @@
   .animate-swipe-hint {
     animation: none;
   }
+  .ptr-spinner,
+  .ptr-spin-soft {
+    animation: none;
+  }
+}
+
+@keyframes ptr-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.ptr-spinner {
+  animation: ptr-spin 0.7s linear infinite;
+}
+
+.ptr-spin-soft {
+  animation: ptr-spin 1.4s linear infinite;
 }
 
 /* Hide scrollbars on horizontal chip/filter rows */

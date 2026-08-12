@@ -37,7 +37,7 @@ import {
   type JobLifecycleSummary,
 } from "@/lib/application-lifecycle";
 import { useRouter } from "@/hooks/use-app-router";
-import { fetchSessionProfile } from "@/hooks/use-session-profile";
+import { fetchBusinessSession } from "@/hooks/use-session-profile";
 import { loadApplicationLifecycles } from "@/lib/load-application-lifecycles";
 import { loadAttendanceRecordsByApplication } from "@/lib/load-attendance-records";
 import {
@@ -80,7 +80,7 @@ function ApplicantsPageInner() {
 
   useEffect(() => {
     async function load() {
-      const { user, business } = await fetchSessionProfile();
+      const { user, business } = await fetchBusinessSession();
       if (!business) {
         router.replace("/business/setup");
         return;

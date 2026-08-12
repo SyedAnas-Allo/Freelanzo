@@ -9,6 +9,7 @@ export function LiveRefresh({
   event = "INSERT",
   filter,
   enabled = true,
+  pollIntervalMs = 5_000,
   onEvent,
   children,
 }: {
@@ -17,9 +18,18 @@ export function LiveRefresh({
   event?: "INSERT" | "UPDATE" | "DELETE" | "*";
   filter?: string;
   enabled?: boolean;
+  pollIntervalMs?: number | null;
   onEvent: () => void;
   children: React.ReactNode;
 }) {
-  useRealtimeRefresh({ channelName, table, event, filter, enabled, onEvent });
+  useRealtimeRefresh({
+    channelName,
+    table,
+    event,
+    filter,
+    enabled,
+    pollIntervalMs,
+    onEvent,
+  });
   return children;
 }

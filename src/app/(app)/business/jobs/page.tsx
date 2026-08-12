@@ -129,7 +129,7 @@ function BusinessJobsContent() {
 
   if (!business) {
     return (
-      <div className="px-4 py-4">
+      <div className="px-4">
         <h1 className="text-xl font-extrabold">My Gigs</h1>
         <EmptyState
           className="mt-8 rounded-2xl"
@@ -162,7 +162,7 @@ function BusinessJobsContent() {
           : list.filter((j) => j.status === tab);
 
   return (
-    <div className="px-4 py-4">
+    <div className="px-4">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-extrabold">My Gigs</h1>
         <div className="flex gap-2">

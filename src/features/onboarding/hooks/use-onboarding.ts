@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useRouter } from "@/hooks/use-app-router";
 import { toast } from "sonner";
+import { refreshSessionProfile } from "@/hooks/use-session-profile";
 import {
   defaultLocationValue,
   hasCoordinates,
@@ -147,7 +148,7 @@ export function useOnboarding() {
       return;
     }
     toast.success("You're all set!");
-    router.refresh();
+    await refreshSessionProfile();
     router.push(returnTo ?? "/continue");
   }
 

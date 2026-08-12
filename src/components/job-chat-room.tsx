@@ -107,41 +107,125 @@ export function JobChatRoom({
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length]);
 
+  // Keep last timestamp for poll catch-up (WebView sockets often die quietly).
+  const newestAt = messages.length
+    ? messages.reduce(
+        (best, m) => (m.createdAt > best ? m.createdAt : best),
+        messages[0]!.createdAt,
+      )
+    : null;
+  const newestAtRef = useRef(newestAt);
+  newestAtRef.current = newestAt;
+
+  const ingestRows = useCallback(
+    (rows: JobMessage[]) => {
+      if (!rows.length) return;
+      setMessages((prev) =>
+        mergeChatMessages(
+          prev,
+          rows.map((row) => ({
+            id: row.id,
+            senderId: row.sender_id,
+            body: row.body,
+            createdAt: row.created_at,
+            isMine: row.sender_id === currentUserId,
+            senderName:
+              resolveSenderName(row.sender_id, participants) ?? null,
+          })),
+        ),
+      );
+    },
+    [currentUserId, participants],
+  );
+
+  const pullLatest = useCallback(async () => {
+    if (document.visibilityState !== "visible") return;
+    const supabase = createClient();
+    let query = supabase
+      .from("job_messages")
+      .select("id, chat_id, sender_id, body, created_at")
+      .eq("chat_id", chat.chat_id)
+      .order("created_at", { ascending: true })
+      .limit(50);
+    const since = newestAtRef.current;
+    if (since) query = query.gt("created_at", since);
+    const { data } = await query;
+    if (data?.length) ingestRows(data as JobMessage[]);
+  }, [chat.chat_id, ingestRows]);
+
   useEffect(() => {
     const supabase = createClient();
-    const channel = supabase
-      .channel(`job-chat:${chat.chat_id}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "job_messages",
-          filter: `chat_id=eq.${chat.chat_id}`,
-        },
-        (payload) => {
-          const row = payload.new as JobMessage;
-          setMessages((prev) =>
-            mergeChatMessages(prev, [
-              {
-                id: row.id,
-                senderId: row.sender_id,
-                body: row.body,
-                createdAt: row.created_at,
-                isMine: row.sender_id === currentUserId,
-                senderName:
-                  resolveSenderName(row.sender_id, participants) ?? null,
-              },
-            ]),
-          );
-        },
-      )
-      .subscribe();
+    let cancelled = false;
+    let channel: ReturnType<typeof supabase.channel> | undefined;
+
+    async function subscribe(epoch: number) {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (cancelled) return;
+      if (session?.access_token) {
+        await supabase.realtime.setAuth(session.access_token);
+      }
+      if (cancelled) return;
+
+      channel = supabase
+        .channel(`job-chat:${chat.chat_id}:${epoch}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "job_messages",
+            filter: `chat_id=eq.${chat.chat_id}`,
+          },
+          (payload) => {
+            ingestRows([payload.new as JobMessage]);
+          },
+        )
+        .subscribe((status) => {
+          if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+            try {
+              supabase.realtime.connect();
+            } catch {
+              // ignore
+            }
+          }
+        });
+    }
+
+    let epoch = 0;
+    void subscribe(epoch);
+
+    function onForeground() {
+      try {
+        supabase.realtime.connect();
+      } catch {
+        // ignore
+      }
+      epoch += 1;
+      if (channel) void supabase.removeChannel(channel);
+      void subscribe(epoch);
+      void pullLatest();
+    }
+
+    function onVisible() {
+      if (document.visibilityState === "visible") onForeground();
+    }
+
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("freelanzo-foreground", onForeground);
+    const poll = setInterval(() => {
+      void pullLatest();
+    }, 3_500);
 
     return () => {
-      void supabase.removeChannel(channel);
+      cancelled = true;
+      clearInterval(poll);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("freelanzo-foreground", onForeground);
+      if (channel) void supabase.removeChannel(channel);
     };
-  }, [chat.chat_id, currentUserId, participants]);
+  }, [chat.chat_id, ingestRows, pullLatest]);
 
   function focusComposer(nextText: string, nextCursor: number) {
     setText(nextText);

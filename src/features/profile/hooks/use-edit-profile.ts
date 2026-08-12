@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useRouter } from "@/hooks/use-app-router";
 import { toast } from "sonner";
+import { refreshSessionProfile } from "@/hooks/use-session-profile";
 import {
   defaultLocationValue,
   hasCoordinates,
@@ -149,8 +150,8 @@ export function useEditProfile() {
       return;
     }
     toast.success("Profile updated");
+    await refreshSessionProfile();
     router.push(returnTo ?? "/profile");
-    router.refresh();
   }
 
   return {

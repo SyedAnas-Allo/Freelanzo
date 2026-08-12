@@ -155,7 +155,7 @@ function BusinessPublicProfileInner() {
         : "/freelancer";
 
   return (
-    <div className="space-y-4 px-4 py-4 pb-8">
+    <div className="space-y-4 px-4 pb-8">
       <div className="flex items-center justify-between gap-2">
         <PageBack href={backHref} />
         <ReportMenuButton

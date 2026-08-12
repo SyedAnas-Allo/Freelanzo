@@ -12,6 +12,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { LocationPickerLazy } from "@/components/location-picker-lazy";
+import { refreshSessionProfile } from "@/hooks/use-session-profile";
 import { createClient } from "@/lib/supabase/client";
 import {
   defaultLocationValue,
@@ -26,6 +27,7 @@ export function LocationSelector({
   lng,
   searchRadiusKm,
   compact = false,
+  variant = "default",
 }: {
   area: string | null;
   city: string | null;
@@ -33,6 +35,8 @@ export function LocationSelector({
   lng: number | null;
   searchRadiusKm: number;
   compact?: boolean;
+  /** Full-width home bar with a Change affordance. */
+  variant?: "default" | "bar";
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -96,11 +100,33 @@ export function LocationSelector({
     }
     toast.success("Location updated");
     setOpen(false);
+    await refreshSessionProfile();
     startTransition(() => router.refresh());
   }
 
-  return (
-    <>
+  const trigger =
+    variant === "bar" ? (
+      <div className="flex items-center justify-between gap-3">
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+        >
+          <MapPin className="size-4 shrink-0 text-primary" />
+          <span className="truncate text-sm font-semibold text-foreground">
+            {locationLabel || "Set location"}
+          </span>
+          <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
+        </button>
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="shrink-0 text-sm font-semibold text-primary"
+        >
+          Change
+        </button>
+      </div>
+    ) : (
       <button
         type="button"
         onClick={() => setOpen(true)}
@@ -127,11 +153,9 @@ export function LocationSelector({
           {compact ? (
             locationLabel || "Set location"
           ) : (
-            <>
-              <span className="font-semibold text-foreground">
-                {locationLabel || "Set location"}
-              </span>
-            </>
+            <span className="font-semibold text-foreground">
+              {locationLabel || "Set location"}
+            </span>
           )}
         </span>
         <ChevronDown
@@ -142,9 +166,17 @@ export function LocationSelector({
           }
         />
       </button>
+    );
+
+  return (
+    <>
+      {trigger}
 
       <Sheet open={open} onOpenChange={handleOpenChange}>
-        <SheetContent side="bottom" className="max-h-[90dvh] overflow-y-auto rounded-t-3xl">
+        <SheetContent
+          side="bottom"
+          className="max-h-[90dvh] overflow-y-auto rounded-t-3xl"
+        >
           <SheetHeader>
             <SheetTitle className="text-left text-lg font-extrabold">
               Select your location

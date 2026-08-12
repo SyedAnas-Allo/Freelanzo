@@ -106,5 +106,29 @@ export function telLink(phone: string) {
   return `tel:${cleaned}`;
 }
 
+/** Digits only, for wa.me / WhatsApp APIs (include country code). */
+export function whatsappDigits(phone: string) {
+  return phone.replace(/\D/g, "");
+}
+
+/** WhatsApp deep link with optional prefilled message. */
+export function whatsappLink(phone: string, message?: string) {
+  const digits = whatsappDigits(phone);
+  const base = `https://wa.me/${digits}`;
+  if (!message?.trim()) return base;
+  return `${base}?text=${encodeURIComponent(message.trim())}`;
+}
+
 /** India emergency services. */
 export const EMERGENCY_PHONE = "112";
+
+/**
+ * Freelanzo safety / support WhatsApp (not product feedback).
+ * Override with NEXT_PUBLIC_SUPPORT_WHATSAPP in production if needed.
+ */
+export const SUPPORT_WHATSAPP_PHONE =
+  process.env.NEXT_PUBLIC_SUPPORT_WHATSAPP?.trim() || "+919620055756";
+
+/** Prefill when opening support WhatsApp from SOS / Safety. */
+export const SUPPORT_WHATSAPP_MESSAGE =
+  "EMERGENCY — I need Freelanzo safety/support help. Please respond ASAP.";

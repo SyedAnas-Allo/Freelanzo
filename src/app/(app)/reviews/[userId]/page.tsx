@@ -172,7 +172,7 @@ function PublicReviewsPageInner() {
   const maxBucket = Math.max(1, ...buckets.map((b) => b.count));
 
   return (
-    <div className="space-y-4 px-4 py-4 pb-8">
+    <div className="space-y-4 px-4 pb-8">
       <PageBack href={backHref} />
 
       <header className="flex items-start gap-3">

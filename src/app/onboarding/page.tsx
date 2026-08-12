@@ -26,6 +26,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useOnboarding } from "@/features/onboarding/hooks/use-onboarding";
+import { dicebearAvatarUrl } from "@/lib/avatar";
 import { cn } from "@/lib/utils";
 import type { GenderType, WorkType } from "@/types/database";
 
@@ -139,7 +140,7 @@ function OnboardingWizard() {
               onClick={() =>
                 setForm((f) => ({
                   ...f,
-                  photo_url: `https://api.dicebear.com/9.x/avataaars/svg?seed=${encodeURIComponent(f.full_name || "Freelanzo")}`,
+                  photo_url: dicebearAvatarUrl(f.full_name || "Freelanzo"),
                 }))
               }
             >

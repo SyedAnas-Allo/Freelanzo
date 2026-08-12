@@ -31,7 +31,9 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useEditProfile } from "@/features/profile/hooks/use-edit-profile";
+import { dicebearAvatarUrl } from "@/lib/avatar";
 import type { GenderType, WorkType } from "@/types/database";
+import { toast } from "sonner";
 
 function EditProfileForm() {
   const fileRef = useRef<HTMLInputElement>(null);
@@ -111,11 +113,10 @@ function EditProfileForm() {
           <button
             type="button"
             className="text-xs font-bold text-muted-foreground"
-            onClick={() =>
-              setPhotoUrl(
-                `https://api.dicebear.com/9.x/avataaars/svg?seed=${encodeURIComponent(fullName || "Freelanzo")}`,
-              )
-            }
+            onClick={() => {
+              setPhotoUrl(dicebearAvatarUrl(fullName || "Freelanzo"));
+              toast.success("Avatar applied — tap Save changes");
+            }}
           >
             Use avatar
           </button>

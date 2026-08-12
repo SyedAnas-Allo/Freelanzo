@@ -39,7 +39,7 @@ export const jobCategoryIcons: Record<
   other: Package,
 };
 
-const categoryColors: Record<JobCategory, string> = {
+export const jobCategoryColors: Record<JobCategory, string> = {
   hospitality: "bg-orange-100 text-orange-700",
   event: "bg-pink-100 text-pink-700",
   promoter: "bg-blue-100 text-blue-700",
@@ -72,7 +72,7 @@ export function JobCategoryIcon({
     <span
       className={cn(
         "flex size-11 shrink-0 items-center justify-center rounded-xl",
-        categoryColors[category],
+        jobCategoryColors[category],
         className,
       )}
     >

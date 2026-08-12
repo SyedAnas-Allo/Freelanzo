@@ -8,8 +8,8 @@ import {
   MessageSquare,
   Plus,
   Search,
-  Send,
   User,
+  Wallet,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { UserMode } from "@/types/database";
@@ -79,28 +79,29 @@ export function BottomNav({
         ]
       : [
           {
-            href: "/freelancer",
-            label: "Find Gigs",
-            icon: Search,
-            match: (p) =>
-              p === "/freelancer" || p.startsWith("/freelancer/jobs/"),
-          },
-          {
             href: "/freelancer/my-jobs",
             label: "My Gigs",
             icon: Briefcase,
-          },
-          {
-            href: "/freelancer",
-            label: "Apply",
-            icon: Send,
-            match: () => false,
+            match: (p) => p.startsWith("/freelancer/my-jobs"),
           },
           {
             href: "/messages",
             label: "Messages",
             icon: MessageSquare,
             badge: unread,
+          },
+          {
+            href: "/freelancer",
+            label: "Find",
+            icon: Search,
+            match: (p) =>
+              p === "/freelancer" || p.startsWith("/freelancer/jobs/"),
+          },
+          {
+            href: "/freelancer/earnings",
+            label: "Earnings",
+            icon: Wallet,
+            match: (p) => p.startsWith("/freelancer/earnings"),
           },
           {
             href: "/profile",

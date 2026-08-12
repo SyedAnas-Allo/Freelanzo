@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import { PageLoading } from "@/components/page-loading";
 import { RateClient } from "@/components/rate-client";
 import { useRouter } from "@/hooks/use-app-router";
-import { fetchSessionProfile } from "@/hooks/use-session-profile";
+import { fetchBusinessSession } from "@/hooks/use-session-profile";
 import { createClient } from "@/lib/supabase/client";
 import type { Job } from "@/types/database";
 
@@ -22,7 +22,7 @@ export default function BusinessRatePage() {
 
   useEffect(() => {
     async function load() {
-      const { user, business } = await fetchSessionProfile();
+      const { user, business } = await fetchBusinessSession();
       if (!business) {
         router.replace("/business/setup");
         return;

@@ -1,14 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { Phone, LifeBuoy } from "lucide-react";
+import { Phone, MessageCircle, MessageSquare } from "lucide-react";
 import { DialLink } from "@/components/dial-link";
+import { WhatsAppLink } from "@/components/whatsapp-link";
 import { InfoCallout } from "@/components/info-callout";
 import { PageContent } from "@/components/layout/page-content";
 import { PageHeader } from "@/components/layout/page-header";
 import { SosBadge } from "@/components/sos-badge";
 import { Button } from "@/components/ui/button";
-import { EMERGENCY_PHONE } from "@/lib/utils";
+import {
+  EMERGENCY_PHONE,
+  SUPPORT_WHATSAPP_MESSAGE,
+  SUPPORT_WHATSAPP_PHONE,
+} from "@/lib/utils";
 
 export default function SafetyPage() {
   return (
@@ -42,12 +47,18 @@ export default function SafetyPage() {
             className="h-11 w-full rounded-xl border-red-300 bg-white font-bold text-red-700"
             asChild
           >
-            <Link href="/feedback">
-              <LifeBuoy className="mr-2 size-4" />
-              Contact Freelanzo Support
-            </Link>
+            <WhatsAppLink
+              phone={SUPPORT_WHATSAPP_PHONE}
+              message={SUPPORT_WHATSAPP_MESSAGE}
+            >
+              <MessageCircle className="mr-2 size-4" />
+              WhatsApp Freelanzo Support
+            </WhatsAppLink>
           </Button>
         </div>
+        <p className="mt-3 text-[11px] font-medium text-red-800/70">
+          Support WhatsApp: +91 96200 55756
+        </p>
       </div>
 
       <InfoCallout title="Safety tips">
@@ -58,6 +69,19 @@ export default function SafetyPage() {
           <li>Leave immediately if you feel unsafe — then report</li>
         </ul>
       </InfoCallout>
+
+      <div className="mt-4 rounded-xl border border-border/70 bg-card p-4">
+        <p className="text-sm font-bold text-foreground">Product feedback</p>
+        <p className="mt-1 text-xs font-light text-muted-foreground">
+          Ideas and app ratings are separate from emergency support.
+        </p>
+        <Button variant="ghost" className="mt-2 h-9 px-0 text-primary" asChild>
+          <Link href="/feedback">
+            <MessageSquare className="mr-2 size-4" />
+            Send feedback
+          </Link>
+        </Button>
+      </div>
     </PageContent>
   );
 }

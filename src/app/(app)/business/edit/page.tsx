@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { refreshSessionProfile } from "@/hooks/use-session-profile";
 import { createClient } from "@/lib/supabase/client";
 import type { BusinessProfile } from "@/types/database";
 
@@ -81,8 +82,8 @@ export default function BusinessEditPage() {
       return;
     }
     toast.success("Business information updated");
+    await refreshSessionProfile();
     router.push("/profile");
-    router.refresh();
   }
 
   if (loading) {

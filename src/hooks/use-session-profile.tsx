@@ -29,9 +29,35 @@ const CACHE_TTL_MS = 60_000;
 let memoryCache: { data: SessionProfile; at: number } | null = null;
 let inflight: Promise<SessionProfile> | null = null;
 
+type SessionListener = (data: SessionProfile) => void;
+const listeners = new Set<SessionListener>();
+
+function subscribeSessionProfile(listener: SessionListener) {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+function publishSessionProfile(data: SessionProfile) {
+  memoryCache = { data, at: Date.now() };
+  listeners.forEach((listener) => listener(data));
+}
+
+/** Clear cache only (e.g. logout). Does not refetch or notify. */
 export function invalidateSessionProfile() {
   memoryCache = null;
   inflight = null;
+}
+
+/**
+ * Force-refetch session and push into every mounted SessionProfileProvider.
+ * Call after profile / business mutations before navigating to gated routes.
+ */
+export async function refreshSessionProfile(): Promise<SessionProfile> {
+  const next = await fetchSessionProfile({ force: true });
+  publishSessionProfile(next);
+  return next;
 }
 
 export async function fetchSessionProfile(options?: {
@@ -84,6 +110,16 @@ export async function fetchSessionProfile(options?: {
   }
 }
 
+/**
+ * Session for business-gated screens. If cached business is missing, force
+ * refresh once so a recent setup cannot bounce to /business/setup forever.
+ */
+export async function fetchBusinessSession(): Promise<SessionProfile> {
+  const cached = await fetchSessionProfile();
+  if (cached.business || !cached.user) return cached;
+  return refreshSessionProfile();
+}
+
 const SessionProfileContext = createContext<UseSessionProfileResult | null>(
   null,
 );
@@ -95,12 +131,7 @@ export function SessionProfileProvider({ children }: { children: ReactNode }) {
   );
   const [loading, setLoading] = useState(() => !memoryCache);
 
-  const reload = useCallback(async () => {
-    const next = await fetchSessionProfile({ force: true });
-    setState(next);
-    setLoading(false);
-    return next;
-  }, []);
+  const reload = useCallback(async () => refreshSessionProfile(), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -113,6 +144,13 @@ export function SessionProfileProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  useEffect(() => {
+    return subscribeSessionProfile((next) => {
+      setState(next);
+      setLoading(false);
+    });
   }, []);
 
   const value = useMemo(
@@ -138,12 +176,7 @@ export function useSessionProfile(): UseSessionProfileResult {
   );
   const [loading, setLoading] = useState(() => !memoryCache);
 
-  const reload = useCallback(async () => {
-    const next = await fetchSessionProfile({ force: true });
-    setState(next);
-    setLoading(false);
-    return next;
-  }, []);
+  const reload = useCallback(async () => refreshSessionProfile(), []);
 
   useEffect(() => {
     if (ctx) return;
@@ -157,6 +190,14 @@ export function useSessionProfile(): UseSessionProfileResult {
     return () => {
       cancelled = true;
     };
+  }, [ctx]);
+
+  useEffect(() => {
+    if (ctx) return;
+    return subscribeSessionProfile((next) => {
+      setState(next);
+      setLoading(false);
+    });
   }, [ctx]);
 
   if (ctx) return ctx;

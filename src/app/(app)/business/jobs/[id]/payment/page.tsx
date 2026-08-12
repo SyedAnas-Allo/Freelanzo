@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import { BusinessPaymentClient } from "@/components/business-payment-client";
 import { PageLoading } from "@/components/page-loading";
 import { useRouter } from "@/hooks/use-app-router";
-import { fetchSessionProfile } from "@/hooks/use-session-profile";
+import { fetchBusinessSession } from "@/hooks/use-session-profile";
 import { createClient } from "@/lib/supabase/client";
 import { isAttendanceComplete, jobWorkDates } from "@/lib/work-dates";
 import type { Job, Payment, Profile } from "@/types/database";
@@ -26,7 +26,7 @@ export default function BusinessPaymentPage() {
 
   useEffect(() => {
     async function load() {
-      const { business } = await fetchSessionProfile();
+      const { business } = await fetchBusinessSession();
       if (!business) {
         router.replace("/business/setup");
         return;

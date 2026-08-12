@@ -30,7 +30,7 @@ export function SectionHeader({
   return (
     <div
       className={cn(
-        "flex min-w-0 items-end justify-between gap-3",
+        "flex min-w-0 items-center justify-between gap-3",
         className,
       )}
     >

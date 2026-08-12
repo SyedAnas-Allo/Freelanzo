@@ -1,5 +1,5 @@
 import { toast } from "sonner";
-import { telLink } from "@/lib/utils";
+import { telLink, whatsappLink } from "@/lib/utils";
 
 function isNativeWebView(): boolean {
   if (typeof window === "undefined") return false;
@@ -73,12 +73,50 @@ export function dialPhone(phone: string) {
   }
 }
 
+/** Open WhatsApp with an optional prefilled message (SOS / support). */
+export function openWhatsApp(phone: string, message?: string) {
+  if (typeof window === "undefined") return;
+  const href = whatsappLink(phone, message);
+
+  if (isNativeWebView() && postNativeOpenUrl(href)) {
+    toast.message("Opening WhatsApp…", {
+      description: "If nothing opens, install WhatsApp or message that number.",
+      duration: 8_000,
+    });
+    return;
+  }
+
+  try {
+    window.open(href, "_blank", "noopener,noreferrer");
+  } catch {
+    window.location.assign(href);
+  }
+}
+
+/**
+ * Open http(s) outside the WebView (maps, docs, target=_blank).
+ * In-browser: normal navigation / new tab.
+ */
+export function openExternalHttp(url: string) {
+  if (typeof window === "undefined") return;
+  if (!/^https?:\/\//i.test(url)) return;
+
+  if (isNativeWebView() && postNativeOpenUrl(url)) return;
+
+  window.open(url, "_blank", "noopener,noreferrer");
+}
+
 /** @deprecated Prefer dialPhone — kept for non-tel external schemes. */
 export function openExternalUrl(url: string) {
   if (typeof window === "undefined") return;
 
   if (url.startsWith("tel:")) {
     dialPhone(url.slice(4));
+    return;
+  }
+
+  if (/^https?:\/\//i.test(url)) {
+    openExternalHttp(url);
     return;
   }
 

@@ -14,7 +14,9 @@ const MIN_REFRESH_MS = 20_000;
  * Badge counts: load once on mount, again on tab focus, and at most every
  * 20s on navigation — not a full refetch on every route change.
  */
-export function useShellBadges(initial: ShellBadges): ShellBadges {
+export function useShellBadges(initial: ShellBadges): ShellBadges & {
+  refreshBadges: (force?: boolean) => Promise<void>;
+} {
   const [badges, setBadges] = useState(initial);
   const lastRefreshAt = useRef(0);
 
@@ -64,5 +66,5 @@ export function useShellBadges(initial: ShellBadges): ShellBadges {
     return () => document.removeEventListener("visibilitychange", handleVisible);
   }, []);
 
-  return badges;
+  return { ...badges, refreshBadges };
 }

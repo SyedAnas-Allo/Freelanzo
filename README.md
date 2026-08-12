@@ -36,8 +36,14 @@ Use **Continue with Google** after enabling Google in Supabase Auth.
 
 1. Supabase Dashboard → Authentication → Providers → Google
 2. Add Client ID / Secret from Google Cloud Console
-3. Redirect URL: `http://localhost:3000/auth/callback` (and production URL)
-4. Mobile number is collected during onboarding / Profile — not at sign-in
+3. Authentication → URL Configuration → **Redirect URLs** must include local **and** production:
+   - `http://localhost:3000/auth/callback`
+   - `http://localhost:3000/**`
+   - `https://freelanzo-three.vercel.app/auth/callback`
+   - `https://freelanzo-three.vercel.app/**`
+   - `freelanzo://**` (native app)
+4. Keep **Site URL** as production. If localhost isn’t allowlisted, local Google login redirects to Site URL (production) after sign-in.
+5. Mobile number is collected during onboarding / Profile — not at sign-in
 
 ## Scripts
 

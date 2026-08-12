@@ -148,7 +148,7 @@ export default function ProfilePage() {
 
   if (!isBusiness && profile) {
     return (
-      <div className="space-y-4 px-4 py-4 pb-8">
+      <div className="space-y-4 px-4 pb-8">
         <FreelancerProfileView
           profile={profile}
           stats={stats}
@@ -243,7 +243,7 @@ export default function ProfilePage() {
   const location = [profile?.area, profile?.city].filter(Boolean).join(", ");
 
   return (
-    <div className="space-y-4 px-4 py-4 pb-8">
+    <div className="space-y-4 px-4 pb-8">
       {business ? (
         <BusinessProfileView
           business={business}
