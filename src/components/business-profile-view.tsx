@@ -6,7 +6,6 @@ import {
   BadgeCheck,
   Briefcase,
   Calendar,
-  Info,
   MapPin,
   ShieldCheck,
   Star,
@@ -14,7 +13,9 @@ import {
   Users,
 } from "lucide-react";
 import { ExpandableText } from "@/components/expandable-text";
+import { ScoreHelpHeader } from "@/components/info-help-sheet";
 import { ReliabilityGauge } from "@/components/reliability-gauge";
+import { BUSINESS_TRUST_HELP } from "@/lib/score-help";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { hasGstin } from "@/lib/gstin";
@@ -264,15 +265,10 @@ export function BusinessProfileView({
 
       {/* Trust score */}
       <section className="rounded-2xl border border-border/70 bg-card p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
-            <h2 className="text-sm font-extrabold">
-              {variant === "self" ? "My Trust Score" : "Trust Score"}
-            </h2>
-            <Info className="size-3.5 text-muted-foreground" />
-          </div>
-          <span className="text-[11px] font-bold text-primary">How it works?</span>
-        </div>
+        <ScoreHelpHeader
+          heading={variant === "self" ? "My Trust Score" : "Trust Score"}
+          help={BUSINESS_TRUST_HELP}
+        />
         <div className="flex items-center gap-4">
           <ReliabilityGauge
             score={stats.reliability}

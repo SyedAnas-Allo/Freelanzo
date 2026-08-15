@@ -4,9 +4,13 @@ import {
   applyEligibilityErrorMessage,
   checkJobEligibility,
   getApplySetupGaps,
+  getPostJobSetupGaps,
   getProfileGaps,
   profileNeedsApplySetup,
   profileNeedsCompletion,
+  profileNeedsPostJobSetup,
+  postJobSetupHref,
+  postJobSetupMessage,
 } from "./profile-eligibility";
 
 function yearsAgo(years: number): string {
@@ -51,6 +55,30 @@ describe("getApplySetupGaps", () => {
   it("passes when essentials are present", () => {
     assert.equal(getApplySetupGaps(readyProfile).length, 0);
     assert.equal(profileNeedsApplySetup(readyProfile), false);
+  });
+});
+
+describe("getPostJobSetupGaps", () => {
+  it("requires phone before posting a gig", () => {
+    const gaps = getPostJobSetupGaps({ phone: null });
+    assert.deepEqual(
+      gaps.map((g) => g.field),
+      ["phone"],
+    );
+    assert.equal(profileNeedsPostJobSetup({ phone: "" }), true);
+    assert.equal(
+      postJobSetupMessage(gaps),
+      "Add your mobile number to post a gig — still needed: Mobile number.",
+    );
+    assert.equal(
+      postJobSetupHref("/business/jobs/new"),
+      "/onboarding?returnTo=%2Fbusiness%2Fjobs%2Fnew",
+    );
+  });
+
+  it("passes when a valid phone is present", () => {
+    assert.equal(getPostJobSetupGaps({ phone: "+919876543210" }).length, 0);
+    assert.equal(profileNeedsPostJobSetup({ phone: "+919876543210" }), false);
   });
 });
 

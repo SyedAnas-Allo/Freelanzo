@@ -47,7 +47,7 @@ const GAP_LABELS: Record<ProfileGapField, string> = {
   photo_url: "Profile photo",
 };
 
-function hasPhone(phone: string | null | undefined): boolean {
+export function hasValidPhone(phone: string | null | undefined): boolean {
   return (phone ?? "").replace(/\D/g, "").slice(-10).length === 10;
 }
 
@@ -80,7 +80,7 @@ export function getApplySetupGaps(
   if (!profile.full_name?.trim()) {
     gaps.push({ field: "full_name", label: GAP_LABELS.full_name });
   }
-  if (!hasPhone(profile.phone)) {
+  if (!hasValidPhone(profile.phone)) {
     gaps.push({ field: "phone", label: GAP_LABELS.phone });
   }
   if (!hasLocation(profile)) {
@@ -98,6 +98,32 @@ export function profileNeedsApplySetup(
 
 export function applySetupHref(returnTo: string): string {
   return `/onboarding?returnTo=${encodeURIComponent(returnTo)}`;
+}
+
+/**
+ * Mobile number required before posting — freelancers need a way to reach you.
+ * Same phone rule as apply; name/location come from business setup + the gig form.
+ */
+export function getPostJobSetupGaps(
+  profile: Pick<Profile, "phone">,
+): ProfileGap[] {
+  if (hasValidPhone(profile.phone)) return [];
+  return [{ field: "phone", label: GAP_LABELS.phone }];
+}
+
+export function profileNeedsPostJobSetup(
+  profile: Pick<Profile, "phone">,
+): boolean {
+  return getPostJobSetupGaps(profile).length > 0;
+}
+
+export function postJobSetupHref(returnTo: string): string {
+  return `/onboarding?returnTo=${encodeURIComponent(returnTo)}`;
+}
+
+export function postJobSetupMessage(gaps: ProfileGap[]): string {
+  const labels = gaps.map((g) => g.label).join(", ");
+  return `Add your mobile number to post a gig — still needed: ${labels}.`;
 }
 
 /** Hard stops that prevent applying (conflicts + incomplete essentials). */

@@ -17,11 +17,14 @@ export async function loadBusinessStats(
   businessId: string,
   ownerId: string,
 ): Promise<BusinessProfileStats> {
-  const { data: jobs } = await supabase
-    .from("jobs")
-    .select("id, status, category")
-    .eq("business_id", businessId)
-    .neq("status", "draft");
+  const [{ data: jobs }, { data: ratings }] = await Promise.all([
+    supabase
+      .from("jobs")
+      .select("id, status, category")
+      .eq("business_id", businessId)
+      .neq("status", "draft"),
+    supabase.from("ratings").select("overall").eq("to_user_id", ownerId),
+  ]);
 
   const jobRows = jobs ?? [];
   const jobIds = jobRows.map((j) => j.id);
@@ -68,10 +71,6 @@ export async function loadBusinessStats(
     }
   }
 
-  const { data: ratings } = await supabase
-    .from("ratings")
-    .select("overall")
-    .eq("to_user_id", ownerId);
   const reviewCount = ratings?.length ?? 0;
   const avgRating =
     reviewCount > 0

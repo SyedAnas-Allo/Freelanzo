@@ -5,8 +5,10 @@ import { useRouter } from "@/hooks/use-app-router";
 import {
   BadgeCheck,
   Briefcase,
+  Heart,
   Images,
   LogOut,
+  MessageCircle,
   MessageSquare,
   Pencil,
   Scale,
@@ -27,6 +29,7 @@ import { hasGstin } from "@/lib/gstin";
 import type { LegalDocumentId } from "@/lib/legal";
 import { loadBusinessStats } from "@/lib/load-business-stats";
 import { loadFreelancerStats } from "@/lib/load-freelancer-stats";
+import { openWhatsApp } from "@/lib/open-external-url";
 import {
   type BusinessProfileStats,
   type FreelancerProfileStats,
@@ -34,9 +37,12 @@ import {
 import { clearRoleReadyCookie } from "@/lib/role-session";
 import { shareOrCopy, SITE_URL } from "@/lib/share";
 import { createClient } from "@/lib/supabase/client";
-import { invalidateSessionProfile } from "@/hooks/use-session-profile";
+import {
+  invalidateSessionProfile,
+  useSessionProfile,
+} from "@/hooks/use-session-profile";
 import { PageLoading } from "@/components/page-loading";
-import type { BusinessProfile, Profile } from "@/types/database";
+import { SUPPORT_WHATSAPP_PHONE } from "@/lib/utils";
 
 const EMPTY_FREELANCER_STATS: FreelancerProfileStats = {
   jobsCompleted: 0,
@@ -67,9 +73,13 @@ const EMPTY_BUSINESS_STATS: BusinessProfileStats = {
 
 export default function ProfilePage() {
   const router = useRouter();
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const [business, setBusiness] = useState<BusinessProfile | null>(null);
-  const [loading, setLoading] = useState(true);
+  const {
+    user,
+    profile,
+    business,
+    loading: sessionLoading,
+  } = useSessionProfile();
+  const [statsLoading, setStatsLoading] = useState(true);
   const [stats, setStats] = useState<FreelancerProfileStats>(
     EMPTY_FREELANCER_STATS,
   );
@@ -79,42 +89,41 @@ export default function ProfilePage() {
   const { photos } = useWorkPhotos(profile?.id);
 
   useEffect(() => {
-    async function load() {
-      const supabase = createClient();
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      const user = session?.user ?? null;
-      if (!user) {
-        router.push("/login");
-        return;
-      }
-      const { data: p } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", user.id)
-        .maybeSingle();
-      const { data: b } = await supabase
-        .from("business_profiles")
-        .select("*")
-        .eq("owner_id", user.id)
-        .maybeSingle();
-      setProfile(p as Profile | null);
-      setBusiness(b as BusinessProfile | null);
-
-      const loaded = await loadFreelancerStats(supabase, user.id);
-      setStats(loaded);
-
-      if (b) {
-        const biz = b as BusinessProfile;
-        const loadedBiz = await loadBusinessStats(supabase, biz.id, biz.owner_id);
-        setBusinessStats(loadedBiz);
-      }
-
-      setLoading(false);
+    if (sessionLoading) return;
+    if (!user) {
+      router.push("/login");
+      return;
     }
-    void load();
-  }, [router]);
+
+    const userId = user.id;
+    let cancelled = false;
+    async function loadStats() {
+      const supabase = createClient();
+      if (profile?.active_mode === "business" && business) {
+        const loaded = await loadBusinessStats(
+          supabase,
+          business.id,
+          business.owner_id,
+        );
+        if (!cancelled) setBusinessStats(loaded);
+      } else {
+        const loaded = await loadFreelancerStats(supabase, userId);
+        if (!cancelled) setStats(loaded);
+      }
+
+      if (!cancelled) setStatsLoading(false);
+    }
+    void loadStats();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    business,
+    profile,
+    router,
+    sessionLoading,
+    user,
+  ]);
 
   async function logout() {
     const supabase = createClient();
@@ -140,7 +149,7 @@ export default function ProfilePage() {
     }
   }
 
-  if (loading) {
+  if (sessionLoading || statsLoading) {
     return <PageLoading variant="profile" />;
   }
 
@@ -168,6 +177,12 @@ export default function ProfilePage() {
             icon={<Briefcase className="size-4" />}
             label="Work History"
             description="Gigs you’ve completed"
+          />
+          <SettingsRow
+            href="/freelancer/saved"
+            icon={<Heart className="size-4" />}
+            label="Saved Gigs"
+            description="Gigs you want to revisit"
           />
           <SettingsRow
             href="/profile/photos"
@@ -198,6 +213,12 @@ export default function ProfilePage() {
             icon={<MessageSquare className="size-4" />}
             label="Send feedback"
             description="Rate Freelanzo and share ideas"
+          />
+          <SettingsRow
+            onClick={() => openWhatsApp(SUPPORT_WHATSAPP_PHONE)}
+            icon={<MessageCircle className="size-4" />}
+            label="Contact Support"
+            description="Chat with Freelanzo on WhatsApp"
           />
           <SettingsRow
             href="/safety"
@@ -297,6 +318,20 @@ export default function ProfilePage() {
           icon={<MessageSquare className="size-4" />}
           label="Send feedback"
           description="Rate Freelanzo and share ideas"
+        />
+        <SettingsRow
+          onClick={() => openWhatsApp(SUPPORT_WHATSAPP_PHONE)}
+          icon={<MessageCircle className="size-4" />}
+          label="Contact Support"
+          description="Chat with Freelanzo on WhatsApp"
+        />
+        <SettingsRow
+          href="/safety"
+          icon={<SosBadge size="sm" />}
+          label="Safety & SOS"
+          description="Emergency help on gigs"
+          danger
+          bareIcon
         />
         <SettingsRow
           onClick={() => setLegalDoc("terms")}

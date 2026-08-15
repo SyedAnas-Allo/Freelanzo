@@ -3,11 +3,9 @@
 import Link from "next/link";
 import { useState } from "react";
 import {
-  BadgeCheck,
   Briefcase,
   Calendar,
   GraduationCap,
-  Info,
   Languages,
   MapPin,
   Star,
@@ -16,7 +14,9 @@ import {
   Wallet,
 } from "lucide-react";
 import { ExpandableText } from "@/components/expandable-text";
+import { ScoreHelpHeader } from "@/components/info-help-sheet";
 import { ReliabilityGauge } from "@/components/reliability-gauge";
+import { FREELANCER_RELIABILITY_HELP } from "@/lib/score-help";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -26,6 +26,7 @@ import {
   yearsActiveSince,
   type FreelancerProfileStats,
 } from "@/lib/profile-stats";
+import { formatSearchRadius, isUnlimitedRadius } from "@/lib/locations";
 import { cn, formatPay } from "@/lib/utils";
 import type { Profile } from "@/types/database";
 
@@ -50,7 +51,9 @@ export function FreelancerProfileView({
   const [showAllSkills, setShowAllSkills] = useState(false);
   const age = ageFromDob(profile.date_of_birth);
   const location = [profile.area, profile.city].filter(Boolean).join(", ");
-  const radius = profile.search_radius_km ?? 10;
+  const radiusLabel = isUnlimitedRadius(profile.search_radius_km)
+    ? "All areas"
+    : `Within ${formatSearchRadius(profile.search_radius_km)}`;
   const skills = profile.skills ?? [];
   const languages = profile.languages ?? [];
   const shownSkills = showAllSkills ? skills : skills.slice(0, 4);
@@ -104,7 +107,6 @@ export function FreelancerProfileView({
               <h1 className="truncate text-lg font-extrabold tracking-tight">
                 {profile.full_name || "Freelancer"}
               </h1>
-              <BadgeCheck className="size-4.5 shrink-0 fill-primary text-white" />
             </div>
             <Badge variant="secondary" size="sm" className="mt-1 text-primary">
               Freelancer
@@ -118,7 +120,7 @@ export function FreelancerProfileView({
                     {location}
                     <span className="text-muted-foreground/80">
                       {" "}
-                      · Within {radius} km
+                      · {radiusLabel}
                     </span>
                   </span>
                 </li>
@@ -331,15 +333,12 @@ export function FreelancerProfileView({
 
       {/* Reliability — no verification block */}
       <section className="rounded-2xl border border-border/70 bg-card p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
-            <h2 className="text-sm font-extrabold">
-              {variant === "self" ? "My Reliability Score" : "Reliability Score"}
-            </h2>
-            <Info className="size-3.5 text-muted-foreground" />
-          </div>
-          <span className="text-[11px] font-bold text-primary">How it works?</span>
-        </div>
+        <ScoreHelpHeader
+          heading={
+            variant === "self" ? "My Reliability Score" : "Reliability Score"
+          }
+          help={FREELANCER_RELIABILITY_HELP}
+        />
         <div className="flex items-center gap-4">
           <ReliabilityGauge
             score={stats.reliability}

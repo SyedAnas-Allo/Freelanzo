@@ -3,9 +3,11 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
+  ArrowRight,
   Bookmark,
   Briefcase,
   Building2,
+  Gift,
   MapPin,
   Plus,
   Users,
@@ -31,6 +33,7 @@ export default function BusinessHomePage() {
     loading: sessionLoading,
   } = useSessionProfile();
   const [activeJobs, setActiveJobs] = useState<Job[]>([]);
+  const [totalJobCount, setTotalJobCount] = useState(0);
   const [applicantsByJob, setApplicantsByJob] = useState<Map<string, number>>(
     new Map(),
   );
@@ -93,6 +96,7 @@ export default function BusinessHomePage() {
 
       if (cancelled) return;
       setActiveJobs(nextActive);
+      setTotalJobCount(jobList.length);
       setApplicantsByJob(nextApplicantsByJob);
       setApplicantCount(nextApplicantCount);
       setHiredToday(nextHiredToday);
@@ -140,6 +144,7 @@ export default function BusinessHomePage() {
     return <PageLoading />;
   }
 
+  const freePostsRemaining = Math.max(0, 2 - totalJobCount);
   const stats = [
     {
       label: "Active Gigs",
@@ -185,6 +190,51 @@ export default function BusinessHomePage() {
           <Building2 className="size-6" />
         </div>
       </div>
+
+      {freePostsRemaining > 0 ? (
+        <Link
+          href="/business/jobs/new"
+          className="group relative mt-5 block overflow-hidden rounded-2xl border border-amber-300/80 bg-gradient-to-br from-amber-100 via-orange-100 to-amber-200/80 px-4 py-4 shadow-sm shadow-amber-300/30 outline-none transition-transform active:scale-[0.99] focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2"
+          aria-label={`Post a gig for free. ${freePostsRemaining} free ${freePostsRemaining === 1 ? "post" : "posts"} remaining.`}
+        >
+          <span
+            aria-hidden="true"
+            className="absolute -right-8 -top-10 size-32 rounded-full border-[18px] border-amber-300/50"
+          />
+          <span
+            aria-hidden="true"
+            className="absolute -bottom-9 right-16 size-20 rounded-full bg-orange-300/35"
+          />
+
+          <div className="relative flex items-start gap-3">
+            <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-amber-200/80 ring-1 ring-inset ring-amber-300">
+              <Gift className="size-5 text-amber-800" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-amber-800/70">
+                New business offer
+              </p>
+              <h2 className="mt-0.5 text-base font-extrabold tracking-tight text-amber-950">
+                Your first 2 gig posts are free
+              </h2>
+              <p className="mt-1 text-xs leading-relaxed text-amber-900/70">
+                Hire local talent with no posting fee. No code needed.
+              </p>
+            </div>
+          </div>
+
+          <div className="relative mt-3 flex items-center justify-between border-t border-dashed border-amber-400/50 pt-3">
+            <span className="rounded-full bg-amber-600 px-2.5 py-1 text-[11px] font-extrabold text-white">
+              {freePostsRemaining} free{" "}
+              {freePostsRemaining === 1 ? "post" : "posts"} left
+            </span>
+            <span className="flex items-center gap-1 text-xs font-bold text-amber-900">
+              Post a free gig
+              <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" />
+            </span>
+          </div>
+        </Link>
+      ) : null}
 
       <div className="mt-4 flex gap-2.5 overflow-x-auto hide-scrollbar pb-1">
         {stats.map((stat) => (
