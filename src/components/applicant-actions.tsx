@@ -2,13 +2,18 @@
 
 import { useState } from "react";
 import { useRouter } from "@/hooks/use-app-router";
-import { Check, X } from "lucide-react";
-import { toast } from "sonner";
+import { Check } from "lucide-react";
 import {
   BinaryChoice,
   binaryChoiceClassNames,
 } from "@/components/actions/binary-choice";
 import { Button } from "@/components/ui/button";
+import {
+  ensureOnlineForMutation,
+  flashSuccess,
+  flashValidation,
+  presentAppError,
+} from "@/lib/flash-message";
 import { isSelectionOpen } from "@/lib/status";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -21,6 +26,7 @@ export function ApplicantActions({
   currentStatus,
   headcount,
   acceptedCount,
+  onApplicationChanged,
 }: {
   applicationId: string;
   jobId: string;
@@ -28,21 +34,24 @@ export function ApplicantActions({
   currentStatus: ApplicationStatus;
   headcount: number;
   acceptedCount: number;
+  onApplicationChanged?: () => void;
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
 
   async function setStatus(status: "accepted" | "rejected") {
     if (status === "accepted" && acceptedCount >= headcount) {
-      toast.error("All openings are filled");
+      flashValidation("All openings are filled");
       return;
     }
+    if (!ensureOnlineForMutation()) return;
 
     setLoading(true);
     const supabase = createClient();
     const { error } = await supabase.rpc("set_application_status", {
       p_application_id: applicationId,
       p_status: status,
+      p_rejection_reason: null,
     });
 
     if (!error) {
@@ -67,10 +76,13 @@ export function ApplicantActions({
 
     setLoading(false);
     if (error) {
-      toast.error(error.message);
+      presentAppError(error, {
+        onRetry: () => void setStatus(status),
+      });
       return;
     }
-    toast.success(status === "accepted" ? "Selected" : "Rejected");
+    flashSuccess(status === "accepted" ? "Selected" : "Rejected");
+    onApplicationChanged?.();
     router.refresh();
   }
 
@@ -79,19 +91,7 @@ export function ApplicantActions({
   }
 
   if (currentStatus === "accepted") {
-    return (
-      <div className="flex w-full gap-2.5">
-        <Button
-          variant="outline"
-          className={cn(binaryChoiceClassNames.reject, "flex-1")}
-          disabled={loading}
-          onClick={() => setStatus("rejected")}
-        >
-          <X className="size-4" strokeWidth={2.5} />
-          Reject
-        </Button>
-      </div>
-    );
+    return null;
   }
 
   if (currentStatus === "rejected") {

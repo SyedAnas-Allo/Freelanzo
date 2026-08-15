@@ -27,6 +27,7 @@ export function ApplicationActionsMenu({
   applicationId,
   canWithdraw = true,
   report,
+  onWithdrawn,
 }: {
   applicationId: string;
   canWithdraw?: boolean;
@@ -35,6 +36,8 @@ export function ApplicationActionsMenu({
     reportedName: string;
     jobId: string;
   } | null;
+  /** Client-loaded screens need this to refetch — router.refresh() won't. */
+  onWithdrawn?: () => void;
 }) {
   const router = useRouter();
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -59,6 +62,7 @@ export function ApplicationActionsMenu({
 
     setConfirmOpen(false);
     toast.success("Application withdrawn");
+    onWithdrawn?.();
     router.refresh();
   }
 

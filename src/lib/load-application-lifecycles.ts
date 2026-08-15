@@ -45,6 +45,8 @@ export async function loadApplicationLifecycles(
     actorUserId: string;
     acceptedCountByJob?: Map<string, number>;
     today?: string;
+    /** Reuse a prior attendance query instead of fetching events again. */
+    events?: EventRow[];
   },
 ): Promise<Map<string, ApplicationLifecycle>> {
   const result = new Map<string, ApplicationLifecycle>();
@@ -53,12 +55,14 @@ export async function loadApplicationLifecycles(
 
   const applicationIds = apps.map((a) => a.id);
 
-  const [{ data: events }, { data: payments }, { data: ratings }] =
+  const [{ data: fetchedEvents }, { data: payments }, { data: ratings }] =
     await Promise.all([
-      supabase
-        .from("attendance_events")
-        .select("application_id, kind, work_date")
-        .in("application_id", applicationIds),
+      opts.events
+        ? Promise.resolve({ data: opts.events })
+        : supabase
+            .from("attendance_events")
+            .select("application_id, kind, work_date")
+            .in("application_id", applicationIds),
       supabase
         .from("payments")
         .select("application_id, status, business_claimed, freelancer_claimed")
@@ -71,7 +75,7 @@ export async function loadApplicationLifecycles(
     ]);
 
   const eventsByApp = new Map<string, EventRow[]>();
-  for (const e of (events ?? []) as EventRow[]) {
+  for (const e of (fetchedEvents ?? []) as EventRow[]) {
     const list = eventsByApp.get(e.application_id) ?? [];
     list.push(e);
     eventsByApp.set(e.application_id, list);

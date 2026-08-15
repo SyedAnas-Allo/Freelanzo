@@ -10,6 +10,7 @@ import {
   Clock,
   MapPin,
   MessageSquare,
+  Phone,
   Users,
 } from "lucide-react";
 import { ContactActionBar } from "@/components/actions/contact-action-bar";
@@ -29,6 +30,7 @@ import { SuccessScreen } from "@/components/feedback/success-screen";
 import { PageBack } from "@/components/page-back";
 import { PageLoading } from "@/components/page-loading";
 import { ReferJobButton } from "@/components/refer-button";
+import { SosCallout } from "@/components/sos-callout";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ApplicantFilterTabs } from "@/features/applications/components/applicant-filter-tabs";
 import {
@@ -39,10 +41,11 @@ import {
 import { useRouter } from "@/hooks/use-app-router";
 import { fetchBusinessSession } from "@/hooks/use-session-profile";
 import { loadApplicationLifecycles } from "@/lib/load-application-lifecycles";
-import { loadAttendanceRecordsByApplication } from "@/lib/load-attendance-records";
+import { loadAttendanceBundleByApplication } from "@/lib/load-attendance-records";
 import {
   applicationStatusLabel,
   applicationStatusToneClassName,
+  effectiveJobStatus,
   isActiveJob,
   isHiredStatus,
   isJobPhoneUnlocked,
@@ -77,6 +80,7 @@ function ApplicantsPageInner() {
   const [loading, setLoading] = useState(true);
   const [notFoundState, setNotFoundState] = useState(false);
   const [data, setData] = useState<PageData | null>(null);
+  const [reloadVersion, setReloadVersion] = useState(0);
 
   useEffect(() => {
     async function load() {
@@ -118,23 +122,31 @@ function ApplicantsPageInner() {
       const jobsById = new Map([[typedJob.id, typedJob]]);
       const acceptedCountByJob = new Map([[typedJob.id, accepted.length]]);
 
-      const [lifecycles, attendanceByApp] = await Promise.all([
-        loadApplicationLifecycles(supabase, {
-          applications: rows.map((a) => ({
-            id: a.id,
-            job_id: a.job_id,
-            status: a.status,
-          })),
-          jobsById,
-          actor: "business",
-          actorUserId: user.id,
-          acceptedCountByJob,
-        }),
-        loadAttendanceRecordsByApplication(
-          supabase,
-          accepted.map((a) => a.id),
+      const attendancePromise = loadAttendanceBundleByApplication(
+        supabase,
+        accepted.map((a) => a.id),
+      );
+      const [attendance, lifecycles] = await Promise.all([
+        attendancePromise,
+        attendancePromise.then((bundle) =>
+          loadApplicationLifecycles(supabase, {
+            applications: rows.map((a) => ({
+              id: a.id,
+              job_id: a.job_id,
+              status: a.status,
+            })),
+            jobsById,
+            actor: "business",
+            actorUserId: user.id,
+            acceptedCountByJob,
+            events: bundle.events.filter(
+              (event): event is typeof event & { application_id: string } =>
+                typeof event.application_id === "string",
+            ),
+          }),
         ),
       ]);
+      const attendanceByApp = attendance.recordsByApplication;
 
       const summary = summarizeJobLifecycles(
         typedJob.id,
@@ -154,7 +166,7 @@ function ApplicantsPageInner() {
       setLoading(false);
     }
     void load();
-  }, [id, router]);
+  }, [id, reloadVersion, router]);
 
   if (loading) return <PageLoading />;
   if (notFoundState || !data) {
@@ -166,6 +178,7 @@ function ApplicantsPageInner() {
   }
 
   const { job: typedJob, rows, lifecycles, attendanceByApp, summary } = data;
+  const displayStatus = effectiveJobStatus(typedJob);
   const accepted = rows.filter((a) => a.status === "accepted");
   const applied = rows.filter((a) => a.status === "applied");
   const rejected = rows.filter((a) => a.status === "rejected");
@@ -202,7 +215,12 @@ function ApplicantsPageInner() {
         <div className="flex items-center gap-0.5">
           <ReferJobButton jobId={typedJob.id} jobTitle={typedJob.title} />
           {isActiveJob(typedJob.status) ? (
-            <JobActionsMenu jobId={typedJob.id} />
+            <JobActionsMenu
+              jobId={typedJob.id}
+              canEdit={["live", "fully_staffed", "confirmed"].includes(
+                displayStatus,
+              )}
+            />
           ) : null}
         </div>
       </div>
@@ -232,12 +250,12 @@ function ApplicantsPageInner() {
           <span
             className={cn(
               "shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide",
-              typedJob.status === "live" || typedJob.status === "fully_staffed"
+              displayStatus === "live" || displayStatus === "fully_staffed"
                 ? "bg-emerald-100 text-emerald-700"
                 : "bg-muted text-muted-foreground",
             )}
           >
-            {jobStatusLabel(typedJob.status)}
+            {jobStatusLabel(displayStatus)}
           </span>
         </div>
 
@@ -248,7 +266,7 @@ function ApplicantsPageInner() {
           </p>
           <p className="flex items-center gap-2 text-[13px] font-bold text-foreground">
             <Clock className="size-3.5 shrink-0 text-primary" />
-            {formatTime(typedJob.start_time)} – {formatTime(typedJob.end_time)}
+            {formatTime(typedJob.start_time)} · {formatTime(typedJob.end_time)}
           </p>
           {typedJob.area ? (
             <p className="flex items-center gap-2 text-[13px] font-semibold text-foreground/80">
@@ -278,7 +296,10 @@ function ApplicantsPageInner() {
         </div>
 
         <div className="mt-4 border-t border-primary/10 pt-3">
-          <JobLifecycleSummaryBar summary={summary} />
+          <JobLifecycleSummaryBar
+            summary={summary}
+            hideCtaHref={`/business/jobs/${id}/applicants`}
+          />
         </div>
 
         {accepted.length > 0 ? (
@@ -286,7 +307,9 @@ function ApplicantsPageInner() {
             href={`/business/jobs/${id}/attendance`}
             className="mt-3 flex h-10 w-full items-center justify-center rounded-xl bg-primary text-[13px] font-bold text-primary-foreground"
           >
-            {hasAnyAttendance ? "View attendance records" : "Attendance / OTP"}
+            {hasAnyAttendance
+              ? "View attendance records"
+              : "Attendance requests"}
           </Link>
         ) : null}
       </div>
@@ -305,7 +328,8 @@ function ApplicantsPageInner() {
         ) : (
           filtered.map((app) => {
             const p = app.profiles;
-            const reveal = isHiredStatus(app.status);
+            const isSelected = isHiredStatus(app.status);
+            const canContact = app.status === "applied" || isSelected;
             const profileHref = `/business/freelancers/${app.freelancer_id}?job=${typedJob.id}`;
             const skills =
               (p.skills || []).slice(0, 3).join(", ") ||
@@ -358,6 +382,11 @@ function ApplicantsPageInner() {
                     reportedName={p.full_name || "Freelancer"}
                     jobId={typedJob.id}
                     applicationId={app.id}
+                    applicationStatus={app.status}
+                    rejectionReason={app.rejection_reason}
+                    onApplicationChanged={() =>
+                      setReloadVersion((version) => version + 1)
+                    }
                   />
                 </div>
 
@@ -387,12 +416,17 @@ function ApplicantsPageInner() {
                   </div>
                 ) : null}
 
-                {reveal ? (
+                {canContact ? (
                   <details className="group border-t border-border/50">
                     <summary className="flex cursor-pointer list-none items-center justify-between px-3.5 py-2.5 text-[12px] font-bold text-primary outline-none transition-colors hover:bg-primary/[0.04] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary [&::-webkit-details-marker]:hidden">
                       <span className="flex items-center gap-1.5">
-                        <MessageSquare className="size-3.5" />
-                        Contact {p.full_name?.split(" ")[0] || "freelancer"}
+                        {isSelected ? (
+                          <MessageSquare className="size-3.5" />
+                        ) : (
+                          <Phone className="size-3.5" />
+                        )}
+                        {isSelected ? "Contact" : "Call"}{" "}
+                        {p.full_name?.split(" ")[0] || "freelancer"}
                       </span>
                       <ChevronDown className="size-4 transition-transform group-open:rotate-180 motion-reduce:transition-none" />
                     </summary>
@@ -401,12 +435,13 @@ function ApplicantsPageInner() {
                       phone={phoneUnlocked ? p.phone : null}
                       callLocked={!phoneUnlocked}
                       chatHref={`/messages/${typedJob.id}`}
+                      showChat={isSelected}
                       size="sm"
                     />
                   </details>
                 ) : null}
 
-                {life?.selectionEditable ? (
+                {life?.selectionEditable && app.status !== "accepted" ? (
                   <div className="border-t border-border/50 px-3.5 py-3">
                     <ApplicantActions
                       applicationId={app.id}
@@ -415,6 +450,9 @@ function ApplicantsPageInner() {
                       currentStatus={app.status}
                       headcount={typedJob.headcount}
                       acceptedCount={accepted.length}
+                      onApplicationChanged={() =>
+                        setReloadVersion((version) => version + 1)
+                      }
                     />
                   </div>
                 ) : null}
@@ -423,6 +461,8 @@ function ApplicantsPageInner() {
           })
         )}
       </div>
+
+      <SosCallout className="mt-4" />
 
       {accepted.length >= typedJob.headcount &&
       ["live", "fully_staffed", "confirmed"].includes(typedJob.status) ? (

@@ -351,8 +351,8 @@ export function deriveApplicationLifecycle(
           cta = {
             label:
               actionable.needs === "check_in"
-                ? "Generate check-in OTP"
-                : "Generate check-out OTP",
+                ? "Review check-in requests"
+                : "Review check-out requests",
             href: `${jobBase}/attendance?kind=${actionable.needs}&date=${actionable.date}`,
             kind: "primary",
           };
