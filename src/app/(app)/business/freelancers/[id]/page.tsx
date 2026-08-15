@@ -13,6 +13,7 @@ import { PageLoading } from "@/components/page-loading";
 import { ReportMenuButton } from "@/components/report-menu-button";
 import { SettingsGroup, SettingsRow } from "@/components/settings-row";
 import { Badge } from "@/components/ui/badge";
+import { fetchBusinessSession } from "@/hooks/use-session-profile";
 import { loadFreelancerStats } from "@/lib/load-freelancer-stats";
 import {
   type FreelancerProfileStats,
@@ -24,7 +25,7 @@ import {
   isJobPhoneUnlocked,
 } from "@/lib/status";
 import { createClient } from "@/lib/supabase/client";
-import type { Application, BusinessProfile, Job, Profile } from "@/types/database";
+import type { Application, Job, Profile } from "@/types/database";
 
 const EMPTY_STATS: FreelancerProfileStats = {
   jobsCompleted: 0,
@@ -63,33 +64,53 @@ function FreelancerProfileInner() {
   const [acceptedCount, setAcceptedCount] = useState(0);
 
   useEffect(() => {
+    let cancelled = false;
+
     async function load() {
-      const supabase = createClient();
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      const user = session?.user ?? null;
+      const { user, business } = await fetchBusinessSession();
+      if (cancelled) return;
       if (!user) {
         router.push("/login");
         return;
       }
-
-      const { data: business } = await supabase
-        .from("business_profiles")
-        .select("*")
-        .eq("owner_id", user.id)
-        .maybeSingle();
       if (!business) {
         router.push("/business/setup");
         return;
       }
-      const biz = business as BusinessProfile;
 
-      const { data: profileRow } = await supabase
+      const supabase = createClient();
+      const profilePromise = supabase
         .from("profiles")
         .select("*")
         .eq("id", id)
         .maybeSingle();
+      const statsPromise = loadFreelancerStats(supabase, id);
+      const jobPromise = jobId
+        ? supabase
+            .from("jobs")
+            .select("*")
+            .eq("id", jobId)
+            .eq("business_id", business.id)
+            .maybeSingle()
+        : Promise.resolve({ data: null });
+      const applicationPromise = jobId
+        ? supabase
+            .from("applications")
+            .select("*")
+            .eq("job_id", jobId)
+            .eq("freelancer_id", id)
+            .maybeSingle()
+        : Promise.resolve({ data: null });
+      const acceptedCountPromise = jobId
+        ? supabase
+            .from("applications")
+            .select("*", { count: "exact", head: true })
+            .eq("job_id", jobId)
+            .eq("status", "accepted")
+        : Promise.resolve({ count: 0 });
+
+      const { data: profileRow } = await profilePromise;
+      if (cancelled) return;
       if (!profileRow) {
         setMissing(true);
         setLoading(false);
@@ -98,39 +119,28 @@ function FreelancerProfileInner() {
 
       const p = profileRow as Profile;
       setProfile(p);
-      setStats(await loadFreelancerStats(supabase, id));
-
-      if (jobId) {
-        const { data: jobRow } = await supabase
-          .from("jobs")
-          .select("*")
-          .eq("id", jobId)
-          .eq("business_id", biz.id)
-          .maybeSingle();
-        const nextJob = (jobRow as Job) ?? null;
-        setJob(nextJob);
-
-        if (nextJob) {
-          const { data: app } = await supabase
-            .from("applications")
-            .select("*")
-            .eq("job_id", jobId)
-            .eq("freelancer_id", id)
-            .maybeSingle();
-          setApplication((app as Application) ?? null);
-
-          const { count: a } = await supabase
-            .from("applications")
-            .select("*", { count: "exact", head: true })
-            .eq("job_id", jobId)
-            .eq("status", "accepted");
-          setAcceptedCount(a ?? 0);
-        }
-      }
-
+      setMissing(false);
       setLoading(false);
+
+      const [nextStats, { data: jobRow }, { data: app }, { count }] =
+        await Promise.all([
+          statsPromise,
+          jobPromise,
+          applicationPromise,
+          acceptedCountPromise,
+        ]);
+      if (cancelled) return;
+
+      const nextJob = (jobRow as Job) ?? null;
+      setStats(nextStats);
+      setJob(nextJob);
+      setApplication(nextJob ? ((app as Application) ?? null) : null);
+      setAcceptedCount(nextJob ? (count ?? 0) : 0);
     }
     void load();
+    return () => {
+      cancelled = true;
+    };
   }, [id, jobId, router]);
 
   if (loading) return <PageLoading />;

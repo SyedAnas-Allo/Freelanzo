@@ -9,6 +9,7 @@ import { PageBack } from "@/components/page-back";
 import { PageLoading } from "@/components/page-loading";
 import { ReviewListItem, StarRow } from "@/components/review-list-item";
 import { Badge } from "@/components/ui/badge";
+import { fetchSessionProfile } from "@/hooks/use-session-profile";
 import { createClient } from "@/lib/supabase/client";
 import type { BusinessProfile, Profile, Rating } from "@/types/database";
 
@@ -50,29 +51,32 @@ function PublicReviewsPageInner() {
   >(() => new Map());
 
   useEffect(() => {
+    let cancelled = false;
+
     async function load() {
-      const supabase = createClient();
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      const user = session?.user ?? null;
+      const { user, profile: me } = await fetchSessionProfile();
+      if (cancelled) return;
       if (!user) {
         router.push("/login");
         return;
       }
 
-      const { data: meRow } = await supabase
-        .from("profiles")
-        .select("active_mode")
-        .eq("id", user.id)
-        .maybeSingle();
-      const me = meRow as Pick<Profile, "active_mode"> | null;
-
-      const { data: subject } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", userId)
-        .maybeSingle();
+      const supabase = createClient();
+      const [{ data: subject }, { data: business }, { data: received }] =
+        await Promise.all([
+          supabase.from("profiles").select("*").eq("id", userId).maybeSingle(),
+          supabase
+            .from("business_profiles")
+            .select("*")
+            .eq("owner_id", userId)
+            .maybeSingle(),
+          supabase
+            .from("ratings")
+            .select("*")
+            .eq("to_user_id", userId)
+            .order("created_at", { ascending: false }),
+        ]);
+      if (cancelled) return;
       if (!subject) {
         setMissing(true);
         setLoading(false);
@@ -83,23 +87,25 @@ function PublicReviewsPageInner() {
       const self = user.id === userId;
       setIsSelf(self);
 
-      const { data: business } = await supabase
-        .from("business_profiles")
-        .select("*")
-        .eq("owner_id", userId)
-        .maybeSingle();
       const biz = business as BusinessProfile | null;
 
       setSubjectName(biz?.business_name || subjectProfile.full_name || "User");
       setSubjectRole(biz ? "Business" : "Freelancer");
 
-      const { data: received } = await supabase
-        .from("ratings")
-        .select("*")
-        .eq("to_user_id", userId)
-        .order("created_at", { ascending: false });
       const ratings = (received ?? []) as Rating[];
       setList(ratings);
+      setMissing(false);
+      setBackHref(
+        safeFrom(from) ??
+          (self
+            ? "/profile"
+            : biz
+              ? `/freelancer/businesses/${biz.id}`
+              : me?.active_mode === "business"
+                ? `/business/freelancers/${userId}`
+                : "/freelancer"),
+      );
+      setLoading(false);
 
       const reviewerIds = [...new Set(ratings.map((r) => r.from_user_id))];
       const [{ data: profiles }, { data: reviewerBusinesses }] =
@@ -114,6 +120,7 @@ function PublicReviewsPageInner() {
                 .in("owner_id", reviewerIds)
             : Promise.resolve({ data: [] }),
         ]);
+      if (cancelled) return;
 
       setProfileMap(
         new Map(((profiles ?? []) as Profile[]).map((p) => [p.id, p])),
@@ -128,20 +135,11 @@ function PublicReviewsPageInner() {
           ).map((b) => [b.owner_id, b]),
         ),
       );
-
-      setBackHref(
-        safeFrom(from) ??
-          (self
-            ? "/profile"
-            : biz
-              ? `/freelancer/businesses/${biz.id}`
-              : me?.active_mode === "business"
-                ? `/business/freelancers/${userId}`
-                : "/freelancer"),
-      );
-      setLoading(false);
     }
     void load();
+    return () => {
+      cancelled = true;
+    };
   }, [from, router, userId]);
 
   if (loading) return <PageLoading />;

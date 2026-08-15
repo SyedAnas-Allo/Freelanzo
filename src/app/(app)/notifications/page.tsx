@@ -8,6 +8,7 @@ import { PageBack } from "@/components/page-back";
 import { PageLoading } from "@/components/page-loading";
 import { Button } from "@/components/ui/button";
 import { NotificationSection } from "@/features/notifications/components/notification-section";
+import { useSessionProfile } from "@/hooks/use-session-profile";
 import { requestBadgesRefresh } from "@/hooks/use-shell-refresh";
 import { classifyAppError, withTransientRetry } from "@/lib/app-errors";
 import {
@@ -15,13 +16,17 @@ import {
   presentAppError,
 } from "@/lib/flash-message";
 import { createClient } from "@/lib/supabase/client";
-import type { Notification, Profile, UserMode } from "@/types/database";
+import type { Notification, UserMode } from "@/types/database";
 
 export default function NotificationsPage() {
   const router = useRouter();
+  const {
+    user,
+    profile,
+    loading: sessionLoading,
+  } = useSessionProfile();
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [mode, setMode] = useState<UserMode>("freelancer");
   const [items, setItems] = useState<Notification[]>([]);
   const [dayAgo, setDayAgo] = useState(0);
   const [marking, setMarking] = useState(false);
@@ -31,25 +36,10 @@ export default function NotificationsPage() {
     try {
       await withTransientRetry(async () => {
         const supabase = createClient();
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        const user = session?.user ?? null;
         if (!user) {
           router.push("/login");
           return;
         }
-
-        const { data: profile, error: profileError } = await supabase
-          .from("profiles")
-          .select("active_mode")
-          .eq("id", user.id)
-          .maybeSingle();
-        if (profileError) throw profileError;
-
-        const nextMode = ((profile as Pick<Profile, "active_mode"> | null)
-          ?.active_mode ?? "freelancer") as UserMode;
-        setMode(nextMode);
 
         const { data, error } = await supabase
           .from("notifications")
@@ -66,24 +56,21 @@ export default function NotificationsPage() {
       const classified = classifyAppError(error);
       setLoadError(classified.message);
     }
-  }, [router]);
+  }, [router, user]);
 
   useEffect(() => {
+    if (sessionLoading) return;
     async function init() {
       await load();
       setLoading(false);
     }
     void init();
-  }, [load]);
+  }, [load, sessionLoading]);
 
   async function markAllRead() {
     if (!ensureOnlineForMutation()) return;
     setMarking(true);
     const supabase = createClient();
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    const user = session?.user ?? null;
     if (!user) {
       setMarking(false);
       return;
@@ -109,8 +96,9 @@ export default function NotificationsPage() {
     setMarking(false);
   }
 
-  if (loading) return <PageLoading />;
+  if (sessionLoading || loading) return <PageLoading />;
 
+  const mode = (profile?.active_mode ?? "freelancer") as UserMode;
   const homeHref = mode === "business" ? "/business" : "/freelancer";
   const newer = items.filter((n) => new Date(n.created_at).getTime() >= dayAgo);
   const earlier = items.filter((n) => new Date(n.created_at).getTime() < dayAgo);

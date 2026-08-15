@@ -83,8 +83,11 @@ function ApplicantsPageInner() {
   const [reloadVersion, setReloadVersion] = useState(0);
 
   useEffect(() => {
+    let cancelled = false;
+
     async function load() {
       const { user, business } = await fetchBusinessSession();
+      if (cancelled) return;
       if (!business) {
         router.replace("/business/setup");
         return;
@@ -95,12 +98,20 @@ function ApplicantsPageInner() {
       }
 
       const supabase = createClient();
-      const { data: job } = await supabase
-        .from("jobs")
-        .select("*")
-        .eq("id", id)
-        .eq("business_id", business.id)
-        .maybeSingle();
+      const [{ data: job }, { data: apps }] = await Promise.all([
+        supabase
+          .from("jobs")
+          .select("*")
+          .eq("id", id)
+          .eq("business_id", business.id)
+          .maybeSingle(),
+        supabase
+          .from("applications")
+          .select("*, profiles(*)")
+          .eq("job_id", id)
+          .order("created_at", { ascending: false }),
+      ]);
+      if (cancelled) return;
       if (!job) {
         setNotFoundState(true);
         setLoading(false);
@@ -109,18 +120,29 @@ function ApplicantsPageInner() {
 
       const typedJob = job as Job;
 
-      const { data: apps } = await supabase
-        .from("applications")
-        .select("*, profiles(*)")
-        .eq("job_id", id)
-        .order("created_at", { ascending: false });
-
       const rows = (apps ?? []) as AppRow[];
       const accepted = rows.filter((a) => a.status === "accepted");
       const applied = rows.filter((a) => a.status === "applied");
 
       const jobsById = new Map([[typedJob.id, typedJob]]);
       const acceptedCountByJob = new Map([[typedJob.id, accepted.length]]);
+
+      // Applicant identity and status are the critical content. Show them
+      // before lifecycle calculations and signed attendance photos finish.
+      setData({
+        job: typedJob,
+        rows,
+        lifecycles: new Map(),
+        attendanceByApp: new Map(),
+        summary: summarizeJobLifecycles(
+          typedJob.id,
+          typedJob.headcount,
+          typedJob.status,
+          [],
+          applied.length,
+        ),
+      });
+      setLoading(false);
 
       const attendancePromise = loadAttendanceBundleByApplication(
         supabase,
@@ -146,6 +168,7 @@ function ApplicantsPageInner() {
           }),
         ),
       ]);
+      if (cancelled) return;
       const attendanceByApp = attendance.recordsByApplication;
 
       const summary = summarizeJobLifecycles(
@@ -156,16 +179,21 @@ function ApplicantsPageInner() {
         applied.length,
       );
 
-      setData({
-        job: typedJob,
-        rows,
-        lifecycles,
-        attendanceByApp,
-        summary,
-      });
-      setLoading(false);
+      setData((current) =>
+        current?.job.id === typedJob.id
+          ? {
+              ...current,
+              lifecycles,
+              attendanceByApp,
+              summary,
+            }
+          : current,
+      );
     }
     void load();
+    return () => {
+      cancelled = true;
+    };
   }, [id, reloadVersion, router]);
 
   if (loading) return <PageLoading />;

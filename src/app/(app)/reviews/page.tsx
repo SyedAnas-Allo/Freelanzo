@@ -9,6 +9,7 @@ import { PageBack } from "@/components/page-back";
 import { PageLoading } from "@/components/page-loading";
 import { ReviewListItem, StarRow } from "@/components/review-list-item";
 import { Badge } from "@/components/ui/badge";
+import { useSessionProfile } from "@/hooks/use-session-profile";
 import { createClient } from "@/lib/supabase/client";
 import type { Profile, Rating } from "@/types/database";
 
@@ -24,9 +25,9 @@ function ReviewsPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const tab = searchParams.get("tab") ?? "received";
+  const { user, loading: sessionLoading } = useSessionProfile();
 
   const [loading, setLoading] = useState(true);
-  const [userId, setUserId] = useState<string>("");
   const [receivedList, setReceivedList] = useState<Rating[]>([]);
   const [givenList, setGivenList] = useState<Rating[]>([]);
   const [profileMap, setProfileMap] = useState<Map<string, Profile>>(
@@ -34,54 +35,61 @@ function ReviewsPageInner() {
   );
 
   useEffect(() => {
+    if (sessionLoading) return;
+    if (!user) {
+      router.push("/login");
+      return;
+    }
+
+    const currentUserId = user.id;
+    let cancelled = false;
+
     async function load() {
       const supabase = createClient();
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      const user = session?.user ?? null;
-      if (!user) {
-        router.push("/login");
-        return;
-      }
-      setUserId(user.id);
 
       const [{ data: received }, { data: given }] = await Promise.all([
         supabase
           .from("ratings")
           .select("*")
-          .eq("to_user_id", user.id)
+          .eq("to_user_id", currentUserId)
           .order("created_at", { ascending: false }),
         supabase
           .from("ratings")
           .select("*")
-          .eq("from_user_id", user.id)
+          .eq("from_user_id", currentUserId)
           .order("created_at", { ascending: false }),
       ]);
 
       const receivedRows = (received ?? []) as Rating[];
       const givenRows = (given ?? []) as Rating[];
+      if (cancelled) return;
       setReceivedList(receivedRows);
       setGivenList(givenRows);
+      setLoading(false);
 
-      const list = tab === "given" ? givenRows : receivedRows;
       const counterpartIds = [
         ...new Set(
-          list.map((r) => (tab === "given" ? r.to_user_id : r.from_user_id)),
+          [
+            ...receivedRows.map((rating) => rating.from_user_id),
+            ...givenRows.map((rating) => rating.to_user_id),
+          ],
         ),
       ];
       const { data: profiles } = counterpartIds.length
         ? await supabase.from("profiles").select("*").in("id", counterpartIds)
         : { data: [] };
+      if (cancelled) return;
       setProfileMap(
         new Map(((profiles ?? []) as Profile[]).map((p) => [p.id, p])),
       );
-      setLoading(false);
     }
     void load();
-  }, [router, tab]);
+    return () => {
+      cancelled = true;
+    };
+  }, [router, sessionLoading, user]);
 
-  if (loading) return <PageLoading />;
+  if (sessionLoading || loading) return <PageLoading />;
 
   const list = tab === "given" ? givenList : receivedList;
 
@@ -107,7 +115,7 @@ function ReviewsPageInner() {
           Ratings & Reviews
         </h1>
         <Link
-          href={`/reviews/${userId}`}
+          href={`/reviews/${user?.id ?? ""}`}
           className="shrink-0 rounded-full border border-border/70 bg-card px-3 py-1.5 text-[11px] font-bold text-primary shadow-sm"
         >
           Public view

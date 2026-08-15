@@ -78,6 +78,11 @@ function BusinessJobsContent() {
 
       const nextList = (jobs ?? []) as Job[];
       const jobIds = nextList.map((job) => job.id);
+      if (cancelled) return;
+
+      // Job cards are useful before lifecycle/payment details are ready.
+      setList(nextList);
+      setLoading(false);
 
       const { data: appsData } = jobIds.length
         ? await supabase
@@ -105,6 +110,10 @@ function BusinessJobsContent() {
         }
       }
 
+      if (cancelled) return;
+      setApps(nextApps);
+      setAppliedCountByJob(nextAppliedCountByJob);
+
       const nextLifecycles = await loadApplicationLifecycles(supabase, {
         applications: nextApps,
         jobsById,
@@ -114,11 +123,7 @@ function BusinessJobsContent() {
       });
 
       if (cancelled) return;
-      setList(nextList);
-      setApps(nextApps);
       setLifecycles(nextLifecycles);
-      setAppliedCountByJob(nextAppliedCountByJob);
-      setLoading(false);
     }
 
     void load();

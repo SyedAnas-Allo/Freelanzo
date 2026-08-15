@@ -39,7 +39,6 @@ export default function BusinessHomePage() {
   );
   const [applicantCount, setApplicantCount] = useState(0);
   const [hiredToday, setHiredToday] = useState(0);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (sessionLoading) return;
@@ -62,16 +61,30 @@ export default function BusinessHomePage() {
 
       const jobList = (jobs ?? []) as Job[];
       const nextActive = jobList.filter((job) => isActiveJob(job.status));
+      if (cancelled) return;
+      setActiveJobs(nextActive);
+      setTotalJobCount(jobList.length);
 
       const jobIds = jobList.map((j) => j.id);
       let nextApplicantCount = 0;
       const nextApplicantsByJob = new Map<string, number>();
+      const today = new Date().toISOString().slice(0, 10);
+      const [{ data: apps }, { count: hiredCount }] = jobIds.length
+        ? await Promise.all([
+            supabase
+              .from("applications")
+              .select("job_id")
+              .in("job_id", jobIds),
+            supabase
+              .from("applications")
+              .select("*", { count: "exact", head: true })
+              .in("job_id", jobIds)
+              .eq("status", "accepted")
+              .gte("updated_at", `${today}T00:00:00`),
+          ])
+        : [{ data: [] }, { count: 0 }];
 
       if (jobIds.length) {
-        const { data: apps } = await supabase
-          .from("applications")
-          .select("job_id")
-          .in("job_id", jobIds);
         for (const row of apps ?? []) {
           nextApplicantsByJob.set(
             row.job_id,
@@ -81,26 +94,10 @@ export default function BusinessHomePage() {
         nextApplicantCount = apps?.length ?? 0;
       }
 
-      const today = new Date().toISOString().slice(0, 10);
-      const nextHiredToday =
-        jobIds.length === 0
-          ? 0
-          : (
-              await supabase
-                .from("applications")
-                .select("*", { count: "exact", head: true })
-                .in("job_id", jobIds)
-                .eq("status", "accepted")
-                .gte("updated_at", `${today}T00:00:00`)
-            ).count ?? 0;
-
       if (cancelled) return;
-      setActiveJobs(nextActive);
-      setTotalJobCount(jobList.length);
       setApplicantsByJob(nextApplicantsByJob);
       setApplicantCount(nextApplicantCount);
-      setHiredToday(nextHiredToday);
-      setLoading(false);
+      setHiredToday(hiredCount ?? 0);
     }
 
     void load();
@@ -138,10 +135,6 @@ export default function BusinessHomePage() {
         />
       </div>
     );
-  }
-
-  if (loading) {
-    return <PageLoading />;
   }
 
   const freePostsRemaining = Math.max(0, 2 - totalJobCount);

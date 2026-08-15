@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import type { AttendanceRecordView } from "@/components/attendance-record-card";
 import {
@@ -37,6 +37,7 @@ async function loadAttendanceData(
   id: string,
   kindParam: string | null,
   dateParam: string | null,
+  onCoreLoaded?: (data: AttendancePageData) => void,
 ): Promise<
   | { ok: true; data: AttendancePageData }
   | { ok: false; reason: "setup" | "not_found" }
@@ -48,12 +49,19 @@ async function loadAttendanceData(
     kindParam === "check_out" ? "check_out" : "check_in";
 
   const supabase = createClient();
-  const { data: job } = await supabase
-    .from("jobs")
-    .select("*")
-    .eq("id", id)
-    .eq("business_id", business.id)
-    .maybeSingle();
+  const [{ data: job }, { data: apps }] = await Promise.all([
+    supabase
+      .from("jobs")
+      .select("*")
+      .eq("id", id)
+      .eq("business_id", business.id)
+      .maybeSingle(),
+    supabase
+      .from("applications")
+      .select("id")
+      .eq("job_id", id)
+      .eq("status", "accepted"),
+  ]);
   if (!job) return { ok: false, reason: "not_found" };
 
   const typedJob = job as Job;
@@ -64,12 +72,6 @@ async function loadAttendanceData(
       ? dateParam
       : pickAttendanceDay(dates);
 
-  const { data: apps } = await supabase
-    .from("applications")
-    .select("id")
-    .eq("job_id", id)
-    .eq("status", "accepted");
-
   const appIds = (apps ?? []).map((a) => a.id);
   let checkedInCount = 0;
   let checkedOutCount = 0;
@@ -77,6 +79,19 @@ async function loadAttendanceData(
   let attendanceRecords: AttendanceRecordView[] = [];
   let attendanceRequests: AttendanceRequestView[] = [];
   const missedWorkers: MissedWorker[] = [];
+
+  onCoreLoaded?.({
+    job: typedJob,
+    kind,
+    workDate,
+    applicationIds: appIds,
+    checkedInCount,
+    checkedOutCount,
+    dayDoneCount,
+    attendanceRecords,
+    attendanceRequests,
+    missedWorkers,
+  });
 
   if (appIds.length) {
     const [
@@ -133,16 +148,31 @@ async function loadAttendanceData(
       ]),
     );
 
-    attendanceRequests = await Promise.all(
-      (requests ?? []).map(async (request) => {
-        let photoUrl: string | null = null;
-        if (request.photo_path) {
-          const { data } = await supabase.storage
-            .from("attendance-photos")
-            .createSignedUrl(request.photo_path, 60 * 60);
-          photoUrl = data?.signedUrl ?? null;
+    const dayEvents = (events ?? []).filter(
+      (event) => event.work_date === workDate,
+    );
+    const photoPaths = [
+      ...new Set(
+        [...(requests ?? []), ...dayEvents]
+          .map((row) => row.photo_path)
+          .filter((path): path is string => !!path),
+      ),
+    ];
+    const signedByPath = new Map<string, string>();
+    if (photoPaths.length) {
+      const { data: signedPhotos } = await supabase.storage
+        .from("attendance-photos")
+        .createSignedUrls(photoPaths, 60 * 60);
+      for (const photo of signedPhotos ?? []) {
+        if (photo.path && photo.signedUrl) {
+          signedByPath.set(photo.path, photo.signedUrl);
         }
-        return {
+      }
+    }
+
+    attendanceRequests = (requests ?? []).map(
+      (request) =>
+        ({
           id: request.id,
           applicationId: request.application_id,
           name:
@@ -153,15 +183,16 @@ async function loadAttendanceData(
           expiresAt: request.expires_at,
           lat: request.lat,
           lng: request.lng,
-          photoUrl,
+          photoUrl: request.photo_path
+            ? (signedByPath.get(request.photo_path) ?? null)
+            : null,
           status:
             request.status === "pending" &&
             new Date(request.expires_at).getTime() <= Date.now()
               ? "expired"
               : request.status,
           rejectionReason: request.rejection_reason,
-        } as AttendanceRequestView;
-      }),
+        }) as AttendanceRequestView,
     );
 
     if (workDate < today) {
@@ -194,42 +225,30 @@ async function loadAttendanceData(
       }
     }
 
-    const dayEvents = (events ?? []).filter(
-      (event) => event.work_date === workDate,
-    );
+    attendanceRecords = dayEvents
+      .map((event) => {
+        const name =
+          namesByApplication.get(event.application_id) ?? "Freelancer";
+        const kindLabel =
+          event.kind === "check_out" ? "Check-Out" : "Check-In";
 
-    attendanceRecords = (
-      await Promise.all(
-        dayEvents.map(async (event) => {
-          let photoUrl: string | null = null;
-          if (event.photo_path) {
-            const { data } = await supabase.storage
-              .from("attendance-photos")
-              .createSignedUrl(event.photo_path, 60 * 60);
-            photoUrl = data?.signedUrl ?? null;
-          }
-
-          const name =
-            namesByApplication.get(event.application_id) ?? "Freelancer";
-          const kindLabel =
-            event.kind === "check_out" ? "Check-Out" : "Check-In";
-
-          return {
-            id: event.id,
-            title: `${name} · ${kindLabel}`,
-            verifiedAt: event.verified_at ?? event.created_at,
-            lat: event.lat,
-            lng: event.lng,
-            photoUrl,
-            source: event.source as
-              | "otp"
-              | "manual_correction"
-              | "business_confirmation"
-              | null,
-          };
-        }),
-      )
-    ).sort((a, b) => a.verifiedAt.localeCompare(b.verifiedAt));
+        return {
+          id: event.id,
+          title: `${name} · ${kindLabel}`,
+          verifiedAt: event.verified_at ?? event.created_at,
+          lat: event.lat,
+          lng: event.lng,
+          photoUrl: event.photo_path
+            ? (signedByPath.get(event.photo_path) ?? null)
+            : null,
+          source: event.source as
+            | "otp"
+            | "manual_correction"
+            | "business_confirmation"
+            | null,
+        };
+      })
+      .sort((a, b) => a.verifiedAt.localeCompare(b.verifiedAt));
   }
 
   return {
@@ -258,9 +277,28 @@ function BusinessAttendancePageInner() {
   const [loading, setLoading] = useState(true);
   const [notFoundState, setNotFoundState] = useState(false);
   const [data, setData] = useState<AttendancePageData | null>(null);
+  const requestVersionRef = useRef(0);
 
   const reload = useCallback(async () => {
-    const result = await loadAttendanceData(id, kindParam, dateParam);
+    const requestVersion = ++requestVersionRef.current;
+    const result = await loadAttendanceData(
+      id,
+      kindParam,
+      dateParam,
+      (coreData) => {
+        if (requestVersion !== requestVersionRef.current) return;
+        setData((current) =>
+          current?.job.id === coreData.job.id &&
+          current.kind === coreData.kind &&
+          current.workDate === coreData.workDate
+            ? current
+            : coreData,
+        );
+        setNotFoundState(false);
+        setLoading(false);
+      },
+    );
+    if (requestVersion !== requestVersionRef.current) return;
     if (!result.ok) {
       if (result.reason === "setup") {
         router.replace("/business/setup");
@@ -277,9 +315,10 @@ function BusinessAttendancePageInner() {
   }, [id, kindParam, dateParam, router]);
 
   useEffect(() => {
-    // Client data load — setState runs after awaited Supabase calls.
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch on mount/params
     void reload();
+    return () => {
+      requestVersionRef.current += 1;
+    };
   }, [reload]);
 
   if (loading) return <PageLoading />;

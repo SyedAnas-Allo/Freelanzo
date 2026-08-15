@@ -11,6 +11,7 @@ import { PageLoading } from "@/components/page-loading";
 import { ReportMenuButton } from "@/components/report-menu-button";
 import { ReviewListItem } from "@/components/review-list-item";
 import { SettingsGroup, SettingsRow } from "@/components/settings-row";
+import { fetchSessionProfile } from "@/hooks/use-session-profile";
 import { loadBusinessStats } from "@/lib/load-business-stats";
 import {
   type BusinessProfileStats,
@@ -59,22 +60,23 @@ function BusinessPublicProfileInner() {
   >(() => new Map());
 
   useEffect(() => {
+    let cancelled = false;
+
     async function load() {
-      const supabase = createClient();
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      const user = session?.user ?? null;
+      const { user } = await fetchSessionProfile();
+      if (cancelled) return;
       if (!user) {
         router.push("/login");
         return;
       }
 
+      const supabase = createClient();
       const { data: business } = await supabase
         .from("business_profiles")
         .select("*")
         .eq("id", id)
         .maybeSingle();
+      if (cancelled) return;
       if (!business) {
         setMissing(true);
         setLoading(false);
@@ -83,32 +85,34 @@ function BusinessPublicProfileInner() {
 
       const nextBiz = business as BusinessProfile;
       setBiz(nextBiz);
+      setLocation(nextBiz.address || "");
+      setMissing(false);
+      setLoading(false);
 
-      const nextStats = await loadBusinessStats(
-        supabase,
-        nextBiz.id,
-        nextBiz.owner_id,
-      );
-      setStats(nextStats);
+      const [nextStats, { data: owner }, { data: ratings }] = await Promise.all([
+        loadBusinessStats(supabase, nextBiz.id, nextBiz.owner_id),
+        supabase
+          .from("profiles")
+          .select("area, city")
+          .eq("id", nextBiz.owner_id)
+          .maybeSingle(),
+        supabase
+          .from("ratings")
+          .select("*")
+          .eq("to_user_id", nextBiz.owner_id)
+          .order("created_at", { ascending: false })
+          .limit(5),
+      ]);
+      if (cancelled) return;
 
-      const { data: owner } = await supabase
-        .from("profiles")
-        .select("area, city")
-        .eq("id", nextBiz.owner_id)
-        .maybeSingle();
       const ownerProfile = owner as Pick<Profile, "area" | "city"> | null;
+      setStats(nextStats);
       setLocation(
         [ownerProfile?.area, ownerProfile?.city].filter(Boolean).join(", ") ||
           nextBiz.address ||
           "",
       );
 
-      const { data: ratings } = await supabase
-        .from("ratings")
-        .select("*")
-        .eq("to_user_id", nextBiz.owner_id)
-        .order("created_at", { ascending: false })
-        .limit(5);
       const recent = (ratings ?? []) as Rating[];
       setRecentRatings(recent);
 
@@ -119,6 +123,7 @@ function BusinessPublicProfileInner() {
             .select("id, full_name, photo_url")
             .in("id", reviewerIds)
         : { data: [] };
+      if (cancelled) return;
       setReviewerMap(
         new Map(
           (
@@ -129,9 +134,11 @@ function BusinessPublicProfileInner() {
           ).map((p) => [p.id, p]),
         ),
       );
-      setLoading(false);
     }
     void load();
+    return () => {
+      cancelled = true;
+    };
   }, [id, router]);
 
   if (loading) return <PageLoading />;
