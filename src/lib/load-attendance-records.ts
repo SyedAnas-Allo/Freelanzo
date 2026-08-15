@@ -126,11 +126,11 @@ export async function loadAttendanceRecordsForApplication(
   supabase: SupabaseClient,
   applicationId: string,
 ): Promise<AttendanceRecordView[]> {
-  const { events } = await loadAttendanceBundleForApplication(
+  const { records } = await loadAttendanceBundleForApplication(
     supabase,
     applicationId,
   );
-  return toRecordViews(supabase, events);
+  return records;
 }
 
 /** One attendance query for both lifecycle projection and record cards. */

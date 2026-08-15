@@ -132,7 +132,7 @@ type PageData = {
   saved: boolean;
   acceptedCount: number;
   acceptingApplications: boolean;
-  jobsPostedCount: number;
+  jobsPostedCount: number | null;
   businessPhone: string | null;
   lifecycle: ApplicationLifecycle | null;
   attendanceRecords: AttendanceRecordView[];
@@ -143,99 +143,135 @@ export default function JobDetailPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [notFoundState, setNotFoundState] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [data, setData] = useState<PageData | null>(null);
   // This screen loads its own data on the client, so router.refresh() cannot
   // pick up a withdrawal. Bumping this re-runs the loader.
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
+    let cancelled = false;
+
     async function load() {
-      const session = await fetchSessionProfile();
-      if (!session.user) {
-        router.replace("/login");
-        return;
-      }
+      try {
+        const session = await fetchSessionProfile();
+        if (cancelled) return;
+        if (!session.user) {
+          router.replace("/login");
+          return;
+        }
 
-      const supabase = createClient();
-      const [
-        { data: job },
-        { data: application },
-        { data: savedJob },
-        { count: acceptedCount },
-        { data: availableRows },
-      ] = await Promise.all([
-        supabase
-          .from("jobs")
-          .select("*, business_profiles(*)")
-          .eq("id", id)
-          .maybeSingle(),
-        supabase
-          .from("applications")
-          .select("*")
-          .eq("job_id", id)
-          .eq("freelancer_id", session.user.id)
-          .maybeSingle(),
-        supabase
-          .from("saved_jobs")
-          .select("job_id")
-          .eq("job_id", id)
-          .eq("freelancer_id", session.user.id)
-          .maybeSingle(),
-        supabase
-          .from("applications")
-          .select("*", { count: "exact", head: true })
-          .eq("job_id", id)
-          .eq("status", "accepted"),
-        supabase.rpc("available_job_ids", { p_job_id: id }),
-      ]);
+        const supabase = createClient();
+        const [
+          { data: job },
+          { data: application },
+          { data: savedJob },
+          { count: acceptedCount },
+          { data: availableRows },
+        ] = await Promise.all([
+          supabase
+            .from("jobs")
+            .select("*, business_profiles(*)")
+            .eq("id", id)
+            .maybeSingle(),
+          supabase
+            .from("applications")
+            .select("*")
+            .eq("job_id", id)
+            .eq("freelancer_id", session.user.id)
+            .maybeSingle(),
+          supabase
+            .from("saved_jobs")
+            .select("job_id")
+            .eq("job_id", id)
+            .eq("freelancer_id", session.user.id)
+            .maybeSingle(),
+          supabase
+            .from("applications")
+            .select("*", { count: "exact", head: true })
+            .eq("job_id", id)
+            .eq("status", "accepted"),
+          supabase.rpc("available_job_ids", { p_job_id: id }),
+        ]);
 
-      if (!job) {
-        setNotFoundState(true);
+        if (cancelled) return;
+        if (!job) {
+          setNotFoundState(true);
+          setLoading(false);
+          return;
+        }
+
+        const typedJob = job as JobWithBusiness;
+        const typedApp = application as Application | null;
+        const hired = typedApp ? isHiredStatus(typedApp.status) : false;
+        const acceptedTotal = acceptedCount ?? 0;
+        const acceptingApplications =
+          ((availableRows ?? []) as { job_id: string }[]).length > 0;
+
+        // Render the core gig immediately. Below-fold statistics, lifecycle
+        // details, phone, and attendance photos hydrate independently.
+        setLoadFailed(false);
+        setData({
+          profile: session.profile,
+          userId: session.user.id,
+          job: typedJob,
+          application: typedApp,
+          saved: !!savedJob,
+          acceptedCount: acceptedTotal,
+          acceptingApplications,
+          jobsPostedCount: null,
+          businessPhone: null,
+          lifecycle: null,
+          attendanceRecords: [],
+        });
         setLoading(false);
-        return;
-      }
 
-      const typedJob = job as JobWithBusiness;
-      const typedApp = application as Application | null;
-      const hired = typedApp ? isHiredStatus(typedApp.status) : false;
-      const acceptingApplications =
-        ((availableRows ?? []) as { job_id: string }[]).length > 0;
-      const jobsPostedCountPromise = supabase
-        .from("jobs")
-        .select("*", { count: "exact", head: true })
-        .eq("business_id", typedJob.business_id);
+        void supabase
+          .from("jobs")
+          .select("*", { count: "exact", head: true })
+          .eq("business_id", typedJob.business_id)
+          .then(({ count: jobsPostedCount }) => {
+            if (cancelled) return;
+            setData((current) =>
+              current?.job.id === typedJob.id
+                ? { ...current, jobsPostedCount: jobsPostedCount ?? 0 }
+                : current,
+            );
+          });
 
-      let businessPhone: string | null = null;
-      let lifecycle: ApplicationLifecycle | null = null;
-      let attendanceRecords: AttendanceRecordView[] = [];
+        if (!typedApp) return;
 
-      if (typedApp) {
-        const [{ data: pay }, { data: rating }, attendance, { data: ownerProfile }] =
-          await Promise.all([
-            supabase
-              .from("payments")
-              .select("status, business_claimed, freelancer_claimed")
-              .eq("application_id", typedApp.id)
-              .maybeSingle(),
-            supabase
-              .from("ratings")
-              .select("id")
-              .eq("application_id", typedApp.id)
-              .eq("from_user_id", session.user.id)
-              .maybeSingle(),
-            loadAttendanceBundleForApplication(supabase, typedApp.id, {
-              includeRecords: hired,
-            }),
-            hired && isJobPhoneUnlocked(typedJob.status)
-              ? supabase
-                  .from("profiles")
-                  .select("phone")
-                  .eq("id", typedJob.business_profiles.owner_id)
-                  .maybeSingle()
-              : Promise.resolve({ data: null }),
-          ]);
+        const [
+          { data: pay },
+          { data: rating },
+          attendance,
+          { data: ownerProfile },
+        ] = await Promise.all([
+          supabase
+            .from("payments")
+            .select("status, business_claimed, freelancer_claimed")
+            .eq("application_id", typedApp.id)
+            .maybeSingle(),
+          supabase
+            .from("ratings")
+            .select("id")
+            .eq("application_id", typedApp.id)
+            .eq("from_user_id", session.user.id)
+            .maybeSingle(),
+          loadAttendanceBundleForApplication(supabase, typedApp.id, {
+            includeRecords: hired,
+          }),
+          hired && isJobPhoneUnlocked(typedJob.status)
+            ? supabase
+                .from("profiles")
+                .select("phone")
+                .eq("id", typedJob.business_profiles.owner_id)
+                .maybeSingle()
+            : Promise.resolve({ data: null }),
+        ]);
 
-        lifecycle = deriveApplicationLifecycle({
+        if (cancelled) return;
+        const lifecycle = deriveApplicationLifecycle({
           applicationId: typedApp.id,
           jobId: typedJob.id,
           applicationStatus: typedApp.status,
@@ -248,36 +284,52 @@ export default function JobDetailPage() {
           freelancerClaimed: !!pay?.freelancer_claimed,
           ratedByActor: !!rating,
           headcount: typedJob.headcount,
-          acceptedCount: acceptedCount ?? 0,
+          acceptedCount: acceptedTotal,
           actor: "freelancer",
         });
 
-        if (hired) {
-          attendanceRecords = attendance.records;
-          businessPhone = ownerProfile?.phone ?? null;
+        setData((current) =>
+          current?.job.id === typedJob.id
+            ? {
+                ...current,
+                businessPhone: hired ? (ownerProfile?.phone ?? null) : null,
+                lifecycle,
+                attendanceRecords: hired ? attendance.records : [],
+              }
+            : current,
+        );
+      } catch {
+        if (!cancelled) {
+          setLoadFailed(true);
+          setLoading(false);
         }
       }
-
-      const { count: jobsPostedCount } = await jobsPostedCountPromise;
-      setData({
-        profile: session.profile,
-        userId: session.user.id,
-        job: typedJob,
-        application: typedApp,
-        saved: !!savedJob,
-        acceptedCount: acceptedCount ?? 0,
-        acceptingApplications,
-        jobsPostedCount: jobsPostedCount ?? 0,
-        businessPhone,
-        lifecycle,
-        attendanceRecords,
-      });
-      setLoading(false);
     }
     void load();
+    return () => {
+      cancelled = true;
+    };
   }, [id, router, reloadKey]);
 
-  if (loading) return <PageLoading />;
+  if (loadFailed && data?.job.id !== id) {
+    return (
+      <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+        Couldn&apos;t load this gig. Check your connection and try again.
+        <button
+          type="button"
+          className="mt-3 block w-full font-bold text-primary"
+          onClick={() => {
+            setLoadFailed(false);
+            setLoading(true);
+            setReloadKey((key) => key + 1);
+          }}
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
+  if (loading || (data && data.job.id !== id)) return <PageLoading />;
   if (notFoundState || !data) {
     return (
       <div className="px-4 py-8 text-center text-sm text-muted-foreground">
@@ -723,7 +775,9 @@ export default function JobDetailPage() {
           <StatCell
             icon={Briefcase}
             label="Gigs Posted"
-            value={String(jobsPostedCount)}
+            value={
+              jobsPostedCount === null ? "Loading…" : String(jobsPostedCount)
+            }
           />
         </div>
 
