@@ -339,8 +339,8 @@ export function JobChatRoom({
   }
 
   return (
-    <div className="flex h-[calc(100dvh-3.25rem)] flex-col">
-      <div className="flex shrink-0 items-center gap-2 border-b border-border/60 px-4 py-3">
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="safe-top flex shrink-0 items-center gap-2 border-b border-border/60 px-4 pb-3">
         <PageBack href="/messages" iconOnly />
         <button
           type="button"

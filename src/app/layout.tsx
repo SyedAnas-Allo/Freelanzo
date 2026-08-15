@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Plus_Jakarta_Sans, Geist_Mono } from "next/font/google";
 import { NetworkStatusCard } from "@/components/network-status-card";
 import { Toaster } from "@/components/ui/sonner";
@@ -20,10 +20,24 @@ export const metadata: Metadata = {
   description:
     "India’s on-demand local freelancing platform for blue-collar and event gigs.",
   manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    title: "Freelanzo",
+    statusBarStyle: "default",
+  },
   icons: {
     icon: [{ url: "/logo.png", type: "image/png" }],
     apple: [{ url: "/logo.png", type: "image/png" }],
   },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  themeColor: "#8e30ff",
+  colorScheme: "light",
+  viewportFit: "cover",
+  interactiveWidget: "resizes-content",
 };
 
 export default function RootLayout({

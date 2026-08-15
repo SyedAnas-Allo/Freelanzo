@@ -124,11 +124,13 @@ export function BottomNav({
               <li key={item.label} className="relative flex justify-center">
                 <Link
                   href={item.href}
-                  className="-mt-4 flex flex-col items-center gap-0.5"
+                  aria-current={active ? "page" : undefined}
+                  data-native-haptic="selection"
+                  className="-mt-4 flex flex-col items-center gap-0.5 select-none transition-transform duration-100 active:scale-95"
                   onPointerEnter={() => router.prefetch(item.href)}
                   onTouchStart={() => router.prefetch(item.href)}
                 >
-                  <span className="flex size-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/30 ring-4 ring-background">
+                  <span className="flex size-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/30 ring-4 ring-background transition-transform duration-150">
                     <Icon className="size-5" />
                   </span>
                   <span className="text-[10px] font-semibold text-primary">
@@ -143,14 +145,21 @@ export function BottomNav({
             <li key={item.label}>
               <Link
                 href={item.href}
+                aria-current={active ? "page" : undefined}
+                data-native-haptic="selection"
                 onPointerEnter={() => router.prefetch(item.href)}
                 onTouchStart={() => router.prefetch(item.href)}
                 className={cn(
-                  "relative flex flex-col items-center gap-0.5 py-1.5 text-[10px] font-medium",
+                  "relative flex flex-col items-center gap-0.5 py-1.5 text-[10px] font-medium select-none transition-[color,transform] duration-100 active:scale-[0.94]",
                   active ? "text-primary" : "text-muted-foreground",
                 )}
               >
-                <span className="relative">
+                <span
+                  className={cn(
+                    "relative flex h-7 min-w-10 items-center justify-center rounded-full px-2 transition-[background-color,transform] duration-150",
+                    active && "bg-primary/12",
+                  )}
+                >
                   <Icon className={cn("size-5", active && "stroke-[2.5px]")} />
                   {item.badge && item.badge > 0 ? (
                     <span className="absolute -top-1.5 -right-2 flex size-4 items-center justify-center rounded-full bg-destructive text-[9px] font-bold text-white">

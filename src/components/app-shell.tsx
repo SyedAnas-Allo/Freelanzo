@@ -35,6 +35,8 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
     /^\/freelancer\/jobs\/[^/]+$/.test(pathname) ||
     /^\/freelancer\/jobs\/[^/]+\/(check-in|check-out|payment)$/.test(pathname) ||
     /^\/messages\/[^/]+$/.test(pathname);
+  // Chat has its own in-page header; keep AppHeader off so the thread fills the screen.
+  const hideHeader = /^\/messages\/[^/]+$/.test(pathname);
   const pullRefreshRef = useRef<() => Promise<void>>(async () => undefined);
 
   useEffect(() => {
@@ -99,18 +101,24 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex min-h-dvh flex-col">
-      <AppHeader
-        unreadCount={unreadCount}
-        homeHref={mode === "business" ? "/business" : "/freelancer"}
-      />
+      {!hideHeader ? (
+        <AppHeader
+          unreadCount={unreadCount}
+          homeHref={mode === "business" ? "/business" : "/freelancer"}
+        />
+      ) : null}
       <PullToRefresh
         onRefresh={onPullRefresh}
-        disabled={!isOnline}
+        disabled={!isOnline || hideHeader}
         className="flex min-h-0 flex-1 flex-col"
       >
         <main
           key={`${pathname}:${contentKey}`}
-          className={cn("flex-1", !hideNav && "safe-bottom")}
+          className={cn(
+            "app-route-enter flex-1",
+            hideHeader && "flex min-h-0 flex-col",
+            !hideNav && "safe-bottom",
+          )}
         >
           {children}
         </main>

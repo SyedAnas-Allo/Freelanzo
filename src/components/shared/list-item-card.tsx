@@ -54,7 +54,7 @@ export function ListItemCard({
   const classes = cn(
     "flex w-full items-center gap-3 rounded-xl border border-border/70 bg-card p-3.5 text-left shadow-sm",
     href &&
-      "transition-colors hover:border-primary/25 hover:bg-muted/20 active:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+      "transition-[color,background-color,border-color,transform] duration-100 hover:border-primary/25 hover:bg-muted/20 active:scale-[0.99] active:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
     className,
   );
 

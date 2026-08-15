@@ -23,7 +23,7 @@ export function AppHeader({
     homeHref ?? (mode === "business" ? "/business" : "/freelancer");
 
   return (
-    <header className="sticky top-0 z-30 bg-background px-4 pt-3 pb-2.5">
+    <header className="safe-top sticky top-0 z-30 bg-background px-4 pb-2.5">
       <div className="relative flex items-center justify-end gap-3">
         <Logo
           href={href}

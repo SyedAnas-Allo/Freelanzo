@@ -149,9 +149,23 @@
     @apply font-sans;
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
+    overscroll-behavior-x: none;
   }
   body {
     @apply bg-background text-base leading-relaxed text-foreground;
+    overflow-x: clip;
+    overscroll-behavior-x: none;
+  }
+  :where(a, button, [role="button"], summary, select) {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+  :where(button, [role="button"], nav a) {
+    -webkit-touch-callout: none;
+  }
+  img,
+  svg {
+    -webkit-user-drag: none;
   }
 }
 
@@ -165,8 +179,54 @@
   box-shadow: 0 0 0 1px color-mix(in oklch, var(--primary) 10%, transparent);
 }
 
+/* WebView-only polish: keep custom pull-to-refresh, remove browser chrome. */
+html[data-native-app="true"] {
+  overscroll-behavior: none;
+  scrollbar-width: none;
+}
+
+html[data-native-app="true"]::-webkit-scrollbar,
+html[data-native-app="true"] body::-webkit-scrollbar {
+  display: none;
+}
+
+.overflow-auto,
+.overflow-y-auto,
+.overflow-x-auto,
+.overflow-x-scroll {
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .app-shell :where(a, button:not(:disabled), [role="button"]):active {
+    opacity: 0.84;
+  }
+}
+
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.safe-top {
+  padding-top: max(0.75rem, var(--safe-top));
+}
+
 .safe-bottom {
-  padding-bottom: calc(5.25rem + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(5.25rem + var(--safe-bottom));
+}
+
+@keyframes app-route-enter {
+  from {
+    opacity: 0.76;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.app-route-enter {
+  animation: app-route-enter 160ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 @keyframes swipe-hint {
@@ -208,6 +268,9 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .app-route-enter {
+    animation: none;
+  }
   .animate-swipe-hint {
     animation: none;
   }
