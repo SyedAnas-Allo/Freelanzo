@@ -33,14 +33,19 @@ export type JobCategory =
   | "security"
   | "catering"
   | "retail"
-  | "office"
+  | "corporate"
   | "sports"
   | "talent"
-  | "student_jobs"
   | "labour"
   | "cleaning"
   | "other";
 export type AttendanceKind = "check_in" | "check_out";
+export type AttendanceRequestStatus =
+  | "pending"
+  | "confirmed"
+  | "rejected"
+  | "expired"
+  | "cancelled";
 export type PaymentMethod = "cash" | "upi";
 export type PaymentStatus = "pending" | "confirmed" | "dispute";
 export type BusinessPayClaim = "paid" | "not_paid";
@@ -121,8 +126,15 @@ export type Application = {
   freelancer_id: string;
   status: ApplicationStatus;
   note: string | null;
+  rejection_reason: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type SavedJob = {
+  freelancer_id: string;
+  job_id: string;
+  created_at: string;
 };
 
 export type Notification = {
@@ -157,10 +169,27 @@ export type AttendanceEvent = {
   lng: number | null;
   verified_at: string;
   created_at: string;
-  source?: "otp" | "manual_correction";
+  source?: "otp" | "manual_correction" | "business_confirmation";
   corrected_by?: string | null;
   correction_reason?: string | null;
   corrected_at?: string | null;
+};
+
+export type AttendanceRequest = {
+  id: string;
+  application_id: string;
+  kind: AttendanceKind;
+  work_date: string;
+  photo_path: string;
+  lat: number | null;
+  lng: number | null;
+  status: AttendanceRequestStatus;
+  rejection_reason: string | null;
+  requested_at: string;
+  expires_at: string;
+  reviewed_at: string | null;
+  reviewed_by: string | null;
+  updated_at: string;
 };
 
 export type Payment = {
@@ -307,12 +336,19 @@ export type Database = {
       };
       applications: {
         Row: Application;
-        Insert: Omit<Application, "id" | "created_at" | "updated_at" | "status" | "note"> & {
+        Insert: Omit<Application, "id" | "created_at" | "updated_at" | "status" | "note" | "rejection_reason"> & {
           id?: string;
           status?: ApplicationStatus;
           note?: string | null;
+          rejection_reason?: string | null;
         };
         Update: Partial<Application>;
+        Relationships: [];
+      };
+      saved_jobs: {
+        Row: SavedJob;
+        Insert: Omit<SavedJob, "created_at"> & { created_at?: string };
+        Update: never;
         Relationships: [];
       };
       notifications: {
@@ -338,6 +374,18 @@ export type Database = {
           verified_at?: string;
         };
         Update: Partial<AttendanceEvent>;
+        Relationships: [];
+      };
+      attendance_requests: {
+        Row: AttendanceRequest;
+        Insert: Omit<AttendanceRequest, "id" | "requested_at" | "expires_at" | "updated_at" | "status" | "reviewed_at" | "reviewed_by" | "rejection_reason"> & {
+          id?: string;
+          status?: AttendanceRequestStatus;
+          rejection_reason?: string | null;
+          reviewed_at?: string | null;
+          reviewed_by?: string | null;
+        };
+        Update: Partial<AttendanceRequest>;
         Relationships: [];
       };
       payments: {
@@ -466,6 +514,25 @@ export type Database = {
         };
         Returns: AttendanceEvent;
       };
+      submit_attendance_request: {
+        Args: {
+          p_application_id: string;
+          p_kind: AttendanceKind;
+          p_photo_path: string;
+          p_lat?: number | null;
+          p_lng?: number | null;
+          p_work_date?: string | null;
+        };
+        Returns: AttendanceRequest;
+      };
+      review_attendance_requests: {
+        Args: {
+          p_request_ids: string[];
+          p_decision: "confirmed" | "rejected";
+          p_rejection_reason?: string | null;
+        };
+        Returns: AttendanceRequest[];
+      };
       correct_attendance: {
         Args: {
           p_application_id: string;
@@ -480,6 +547,7 @@ export type Database = {
         Args: {
           p_application_id: string;
           p_status: ApplicationStatus;
+          p_rejection_reason?: string | null;
         };
         Returns: Application;
       };
@@ -487,8 +555,37 @@ export type Database = {
         Args: { p_application_id: string };
         Returns: Application;
       };
+      is_job_saved: {
+        Args: { p_job_id: string };
+        Returns: boolean;
+      };
       cancel_job: {
         Args: { p_job_id: string };
+        Returns: Job;
+      };
+      update_job_and_notify_applicants: {
+        Args: {
+          p_job_id: string;
+          p_title: string;
+          p_description: string;
+          p_category: JobCategory;
+          p_skilled: boolean;
+          p_gender_preference: JobGenderPreference;
+          p_headcount: number;
+          p_work_dates: string[];
+          p_start_time: string;
+          p_end_time: string;
+          p_address: string;
+          p_area: string;
+          p_city: string;
+          p_lat: number;
+          p_lng: number;
+          p_pay_per_freelancer: number;
+          p_dress_code: string;
+          p_instructions: string;
+          p_food_allowance_inr: number;
+          p_travel_allowance_inr: number;
+        };
         Returns: Job;
       };
       reapply_application: {
