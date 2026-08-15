@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useRef } from "react";
 import {
   ArrowRight,
   Briefcase,
@@ -26,7 +26,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useOnboarding } from "@/features/onboarding/hooks/use-onboarding";
-import { dicebearAvatarUrl } from "@/lib/avatar";
 import { cn } from "@/lib/utils";
 import type { GenderType, WorkType } from "@/types/database";
 
@@ -72,12 +71,15 @@ export default function OnboardingPage() {
 }
 
 function OnboardingWizard() {
+  const fileRef = useRef<HTMLInputElement>(null);
   const {
     step,
     stepCount,
     loading,
     form,
     setForm,
+    photoPreviewUrl,
+    pickPhoto,
     location,
     setLocation,
     progress,
@@ -115,37 +117,49 @@ function OnboardingWizard() {
               Set Up Your Profile
             </h1>
             <p className="mt-1 text-sm font-light text-muted-foreground">
-              {returnTo
-                ? "Add a few details so you can apply for this gig."
-                : "Add a few details to help businesses know more about you."}
+              {returnTo?.includes("/business/jobs")
+                ? "Add your mobile number so freelancers can reach you about this gig."
+                : returnTo
+                  ? "Add a few details so you can apply for this gig."
+                  : "Add a few details to help businesses know more about you."}
             </p>
           </div>
 
           <div className="relative mx-auto my-6 size-28">
             <div className="flex size-28 items-center justify-center overflow-hidden rounded-full bg-secondary text-primary ring-4 ring-primary/10">
-              {form.photo_url ? (
+              {photoPreviewUrl || form.photo_url ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
-                  src={form.photo_url}
+                  src={photoPreviewUrl || form.photo_url}
                   alt=""
                   className="size-28 rounded-full object-cover"
                 />
               ) : (
-                <UserRound className="size-12" />
+                <span className="text-3xl font-bold">
+                  {(form.full_name || "?").slice(0, 1).toUpperCase()}
+                </span>
               )}
             </div>
             <button
               type="button"
-              className="absolute bottom-1 right-1 flex size-9 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-md"
-              onClick={() =>
-                setForm((f) => ({
-                  ...f,
-                  photo_url: dicebearAvatarUrl(f.full_name || "Freelanzo"),
-                }))
+              aria-label={
+                photoPreviewUrl || form.photo_url ? "Change photo" : "Add photo"
               }
+              className="absolute bottom-1 right-1 flex size-9 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-md"
+              onClick={() => fileRef.current?.click()}
             >
               <Camera className="size-4" />
             </button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(event) => {
+                pickPhoto(event.target.files?.[0] ?? null);
+                event.target.value = "";
+              }}
+            />
           </div>
 
           <div className="space-y-2.5">

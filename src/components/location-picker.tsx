@@ -13,8 +13,11 @@ import L from "leaflet";
 import { Crosshair, MapPin, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { classifyAppError } from "@/lib/app-errors";
 import {
+  formatSearchRadius,
   hasCoordinates,
+  isUnlimitedRadius,
   RADIUS_OPTIONS,
   type LocationValue,
 } from "@/lib/locations";
@@ -51,17 +54,17 @@ function MapController({
   hasLocation,
 }: {
   center: [number, number];
-  radiusKm: number;
+  radiusKm: number | null;
   hasLocation: boolean;
 }) {
   const map = useMap();
   useEffect(() => {
-    map.setView(
-      center,
-      hasLocation
-        ? Math.max(12, 14 - Math.log2(Math.max(radiusKm, 1) / 5))
-        : 5,
-    );
+    const zoom = !hasLocation
+      ? 5
+      : isUnlimitedRadius(radiusKm)
+        ? 11
+        : Math.max(12, 14 - Math.log2(Math.max(radiusKm, 1) / 5));
+    map.setView(center, zoom);
   }, [map, center, radiusKm, hasLocation]);
   return null;
 }
@@ -104,8 +107,9 @@ export function LocationPicker({
   const [results, setResults] = useState<GeocodeResult[]>([]);
   const reverseController = useRef<AbortController | null>(null);
   const searchController = useRef<AbortController | null>(null);
-  const radius = value.search_radius_km ?? 10;
+  const radius = value.search_radius_km ?? null;
   const hasLocation = hasCoordinates(value);
+  const unlimited = isUnlimitedRadius(radius);
   const center = useMemo(
     () =>
       hasLocation
@@ -172,10 +176,9 @@ export function LocationPicker({
         city: "",
         label: coordinateLabel,
       });
+      const classified = classifyAppError(error, { op: "geocode" });
       setLocationError(
-        error instanceof Error
-          ? `${error.message} Exact coordinates were selected instead.`
-          : "Exact coordinates were selected.",
+        `${classified.message} Exact coordinates were selected instead.`,
       );
     } finally {
       if (!controller.signal.aborted) setGeoLoading(false);
@@ -238,9 +241,8 @@ export function LocationPicker({
       }
     } catch (error) {
       if (controller.signal.aborted) return;
-      setLocationError(
-        error instanceof Error ? error.message : "Location search failed.",
-      );
+      const classified = classifyAppError(error, { op: "geocode" });
+      setLocationError(classified.message);
     } finally {
       if (!controller.signal.aborted) setSearchLoading(false);
     }
@@ -324,7 +326,7 @@ export function LocationPicker({
               }}
             />
           ) : null}
-          {showRadius && hasLocation ? (
+          {showRadius && hasLocation && !unlimited ? (
             <Circle
               center={center}
               radius={radius * 1000}
@@ -372,7 +374,7 @@ export function LocationPicker({
           </p>
           {showRadius && hasLocation ? (
             <p className="mt-0.5 text-xs font-light text-muted-foreground">
-              Radius · {radius} km
+              Radius · {formatSearchRadius(radius)}
             </p>
           ) : null}
         </div>
@@ -381,6 +383,15 @@ export function LocationPicker({
 
       {showRadius && (
         <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant={unlimited ? "default" : "outline"}
+            className="rounded-full"
+            onClick={() => onChange({ ...value, search_radius_km: null })}
+          >
+            All
+          </Button>
           {RADIUS_OPTIONS.map((km) => (
             <Button
               key={km}

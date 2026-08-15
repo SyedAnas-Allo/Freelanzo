@@ -10,8 +10,11 @@ import {
   ShieldCheck,
   UserRound,
 } from "lucide-react";
-import { toast } from "sonner";
 import { Logo } from "@/components/logo";
+import {
+  ensureOnlineForMutation,
+  presentAppError,
+} from "@/lib/flash-message";
 import { setRoleReadyCookie } from "@/lib/role-session";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -22,6 +25,7 @@ export default function ContinuePage() {
   const [picking, setPicking] = useState<UserMode | null>(null);
 
   async function choose(mode: UserMode) {
+    if (!ensureOnlineForMutation()) return;
     setPicking(mode);
     const supabase = createClient();
     const {
@@ -43,7 +47,7 @@ export default function ContinuePage() {
 
     if (error) {
       setPicking(null);
-      toast.error(error.message);
+      presentAppError(error, { onRetry: () => void choose(mode) });
       return;
     }
 
@@ -72,8 +76,9 @@ export default function ContinuePage() {
 
       if (createError || created?.active_mode !== mode) {
         setPicking(null);
-        toast.error(
-          createError?.message ?? "Could not save your choice. Try again.",
+        presentAppError(
+          createError ?? new Error("Could not save your choice. Try again."),
+          { onRetry: () => void choose(mode) },
         );
         return;
       }

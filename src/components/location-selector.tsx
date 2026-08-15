@@ -33,7 +33,7 @@ export function LocationSelector({
   city: string | null;
   lat: number | null;
   lng: number | null;
-  searchRadiusKm: number;
+  searchRadiusKm: number | null;
   compact?: boolean;
   /** Full-width home bar with a Change affordance. */
   variant?: "default" | "bar";
@@ -90,7 +90,7 @@ export function LocationSelector({
         city: value.city,
         lat: value.lat,
         lng: value.lng,
-        search_radius_km: value.search_radius_km ?? 10,
+        search_radius_km: value.search_radius_km ?? null,
       })
       .eq("id", user.id);
 

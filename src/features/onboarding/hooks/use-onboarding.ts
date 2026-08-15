@@ -3,8 +3,24 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useRouter } from "@/hooks/use-app-router";
-import { toast } from "sonner";
+import {
+  clearSessionDraft,
+  SESSION_DRAFT_KEYS,
+  useSessionDraft,
+} from "@/hooks/use-session-draft";
 import { refreshSessionProfile } from "@/hooks/use-session-profile";
+import {
+  ensureOnlineForMutation,
+  flashSuccess,
+  flashValidation,
+  presentAppError,
+} from "@/lib/flash-message";
+import {
+  removeAvatarObject,
+  removeReplacedOwnedAvatar,
+  uploadPublicAvatar,
+  validateAvatarFile,
+} from "@/lib/avatar-upload";
 import {
   defaultLocationValue,
   hasCoordinates,
@@ -24,9 +40,17 @@ export function useOnboarding() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const returnTo = safeReturnTo(searchParams.get("returnTo"));
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useSessionDraft(
+    SESSION_DRAFT_KEYS.onboardingStep,
+    0,
+  );
   const [loading, setLoading] = useState(false);
-  const [form, setForm] = useState({
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const photoPreviewUrl = useMemo(
+    () => (photoFile ? URL.createObjectURL(photoFile) : ""),
+    [photoFile],
+  );
+  const [form, setForm] = useSessionDraft(SESSION_DRAFT_KEYS.onboardingForm, {
     full_name: "",
     phone: "",
     date_of_birth: "",
@@ -34,7 +58,16 @@ export function useOnboarding() {
     work_type: "unskilled" as WorkType,
     photo_url: "",
   });
-  const [location, setLocation] = useState<LocationValue>(defaultLocationValue());
+  const [location, setLocation] = useSessionDraft<LocationValue>(
+    SESSION_DRAFT_KEYS.onboardingLocation,
+    defaultLocationValue,
+  );
+
+  useEffect(() => {
+    return () => {
+      if (photoPreviewUrl) URL.revokeObjectURL(photoPreviewUrl);
+    };
+  }, [photoPreviewUrl]);
 
   useEffect(() => {
     async function hydrateFromProfile() {
@@ -69,7 +102,7 @@ export function useOnboarding() {
         gender: (profile?.gender as GenderType) || current.gender,
         work_type: (profile?.work_type as WorkType) || current.work_type,
         photo_url:
-          current.photo_url ||
+          (current.photo_url.startsWith("data:") ? "" : current.photo_url) ||
           profile?.photo_url ||
           meta.avatar_url ||
           meta.picture ||
@@ -77,19 +110,21 @@ export function useOnboarding() {
       }));
 
       if (profile?.lat != null && profile?.lng != null) {
-        setLocation(
-          defaultLocationValue({
-            area: profile.area ?? undefined,
-            city: profile.city ?? undefined,
-            lat: profile.lat,
-            lng: profile.lng,
-            search_radius_km: profile.search_radius_km ?? undefined,
-          }),
+        setLocation((current) =>
+          hasCoordinates(current)
+            ? current
+            : defaultLocationValue({
+                area: profile.area ?? undefined,
+                city: profile.city ?? undefined,
+                lat: profile.lat,
+                lng: profile.lng,
+                search_radius_km: profile.search_radius_km ?? undefined,
+              }),
         );
       }
     }
     void hydrateFromProfile();
-  }, []);
+  }, [setForm, setLocation]);
 
   const progress = useMemo(
     () => ((step + 1) / STEP_COUNT) * 100,
@@ -98,22 +133,33 @@ export function useOnboarding() {
 
   function continueToNextStep() {
     if (step === 0 && !form.full_name.trim()) {
-      toast.error("Please enter your name");
+      flashValidation("Please enter your name");
       return;
     }
     if (step === 0 && form.phone.replace(/\D/g, "").length < 10) {
-      toast.error("Enter a valid 10-digit mobile number");
+      flashValidation("Enter a valid 10-digit mobile number");
       return;
     }
     setStep((current) => current + 1);
   }
 
+  function pickPhoto(file: File | null) {
+    if (!file) return;
+    const validationMessage = validateAvatarFile(file);
+    if (validationMessage) {
+      flashValidation(validationMessage);
+      return;
+    }
+    setPhotoFile(file);
+  }
+
   async function finish() {
     if (!hasCoordinates(location)) {
-      toast.error("Choose your current location or search for an area");
+      flashValidation("Choose your current location or search for an area");
       setStep(1);
       return;
     }
+    if (!ensureOnlineForMutation()) return;
     setLoading(true);
     const supabase = createClient();
     const {
@@ -121,11 +167,34 @@ export function useOnboarding() {
     } = await supabase.auth.getSession();
     const user = session?.user ?? null;
     if (!user) {
-      toast.error("Please sign in again");
+      setLoading(false);
+      presentAppError(new Error("Not authenticated"));
       router.push("/login");
       return;
     }
     const digits = form.phone.replace(/\D/g, "").slice(-10);
+    const previousPhotoUrl = form.photo_url.startsWith("data:")
+      ? null
+      : form.photo_url || null;
+    let uploadedPhoto: Awaited<ReturnType<typeof uploadPublicAvatar>> | null =
+      null;
+
+    try {
+      if (photoFile) {
+        uploadedPhoto = await uploadPublicAvatar({
+          supabase,
+          file: photoFile,
+          ownerId: user.id,
+          kind: "profiles",
+        });
+      }
+    } catch (error) {
+      setLoading(false);
+      presentAppError(error, { op: "upload", onRetry: () => void finish() });
+      return;
+    }
+
+    const nextPhotoUrl = uploadedPhoto?.publicUrl ?? previousPhotoUrl;
     const { error } = await supabase
       .from("profiles")
       .update({
@@ -136,18 +205,34 @@ export function useOnboarding() {
         area: location.area,
         lat: location.lat,
         lng: location.lng,
-        search_radius_km: location.search_radius_km ?? 10,
-        photo_url: form.photo_url || null,
+        search_radius_km: location.search_radius_km ?? null,
+        photo_url: nextPhotoUrl,
         onboarding_complete: true,
       })
       .eq("id", user.id);
 
     setLoading(false);
     if (error) {
-      toast.error(error.message);
+      if (uploadedPhoto) {
+        await removeAvatarObject(supabase, uploadedPhoto.path).catch(() => {});
+      }
+      presentAppError(error, { onRetry: () => void finish() });
       return;
     }
-    toast.success("You're all set!");
+    if (uploadedPhoto) {
+      await removeReplacedOwnedAvatar({
+        supabase,
+        previousUrl: previousPhotoUrl,
+        ownerId: user.id,
+        replacementPath: uploadedPhoto.path,
+      }).catch(() => {});
+    }
+    flashSuccess("You're all set!");
+    clearSessionDraft(
+      SESSION_DRAFT_KEYS.onboardingForm,
+      SESSION_DRAFT_KEYS.onboardingLocation,
+      SESSION_DRAFT_KEYS.onboardingStep,
+    );
     await refreshSessionProfile();
     router.push(returnTo ?? "/continue");
   }
@@ -158,6 +243,8 @@ export function useOnboarding() {
     loading,
     form,
     setForm,
+    photoPreviewUrl,
+    pickPhoto,
     location,
     setLocation,
     progress,

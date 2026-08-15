@@ -2,7 +2,6 @@
 
 import { useState, useTransition } from "react";
 import { Star } from "lucide-react";
-import { toast } from "sonner";
 import { StarRow } from "@/components/review-list-item";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -14,6 +13,12 @@ import {
   feedbackCommentRequired,
   submitAppFeedback,
 } from "@/lib/app-feedback";
+import {
+  ensureOnlineForMutation,
+  flashSuccess,
+  flashValidation,
+  presentAppError,
+} from "@/lib/flash-message";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import type { AppFeedback, AppFeedbackCategory } from "@/types/database";
@@ -67,17 +72,18 @@ export function FeedbackForm({
 
   function submit() {
     if (!overall) {
-      toast.error("Pick a star rating");
+      flashValidation("Pick a star rating");
       return;
     }
     if (!category) {
-      toast.error("Pick a category");
+      flashValidation("Pick a category");
       return;
     }
     if (commentRequired && !comment.trim()) {
-      toast.error("Please add a short note for low ratings");
+      flashValidation("Please add a short note for low ratings");
       return;
     }
+    if (!ensureOnlineForMutation()) return;
 
     startTransition(async () => {
       const supabase = createClient();
@@ -91,11 +97,11 @@ export function FeedbackForm({
       );
 
       if (!result.ok) {
-        toast.error(result.message);
+        presentAppError(result.message, { onRetry: () => submit() });
         return;
       }
 
-      toast.success("Thanks — we got your feedback");
+      flashSuccess("Thanks — we got your feedback");
       setOverall(0);
       setCategory(null);
       setComment("");

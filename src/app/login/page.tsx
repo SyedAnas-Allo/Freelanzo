@@ -2,10 +2,13 @@
 
 import { useState } from "react";
 import { Lock, Shield, Smartphone, Users } from "lucide-react";
-import { toast } from "sonner";
 import { LegalDocumentSheet } from "@/components/legal-document-sheet";
 import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
+import {
+  ensureOnlineForMutation,
+  presentAppError,
+} from "@/lib/flash-message";
 import type { LegalDocumentId } from "@/lib/legal";
 import { clearRoleReadyCookie } from "@/lib/role-session";
 import {
@@ -18,6 +21,7 @@ export default function LoginPage() {
   const [legalDoc, setLegalDoc] = useState<LegalDocumentId | null>(null);
 
   async function signInWithGoogle() {
+    if (!ensureOnlineForMutation()) return;
     setLoading(true);
     clearRoleReadyCookie();
     const supabase = createLoginClient();
@@ -41,7 +45,7 @@ export default function LoginPage() {
 
     if (error) {
       setLoading(false);
-      toast.error(error.message);
+      presentAppError(error, { onRetry: () => void signInWithGoogle() });
       return;
     }
 

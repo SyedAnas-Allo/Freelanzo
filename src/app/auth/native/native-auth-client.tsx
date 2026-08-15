@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useRouter } from "@/hooks/use-app-router";
+import { classifyAppError } from "@/lib/app-errors";
 import { clearRoleReadyCookie } from "@/lib/role-session";
 import { createClient } from "@/lib/supabase/client";
 import { completeNativeOAuth } from "@/lib/supabase/native-auth";
@@ -29,7 +31,7 @@ export default function NativeAuthPage() {
         const { error: exchangeError } = await completeNativeOAuth(code);
         if (cancelled) return;
         if (exchangeError) {
-          setError(exchangeError.message);
+          setError(classifyAppError(exchangeError).message);
           return;
         }
         clearRoleReadyCookie();
@@ -45,7 +47,7 @@ export default function NativeAuthPage() {
         });
         if (cancelled) return;
         if (sessionError) {
-          setError(sessionError.message);
+          setError(classifyAppError(sessionError).message);
           return;
         }
         clearRoleReadyCookie();
@@ -62,10 +64,20 @@ export default function NativeAuthPage() {
   }, [router, code, accessToken, refreshToken]);
 
   return (
-    <div className="flex min-h-dvh items-center justify-center bg-background px-6 text-center">
+    <div className="flex min-h-dvh flex-col items-center justify-center bg-background px-6 text-center">
       <p className="text-sm text-muted-foreground">
-        {error ? `Sign-in failed: ${error}` : "Finishing sign-in…"}
+        {error ? error : "Finishing sign-in…"}
       </p>
+      {error ? (
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
+          <Link
+            href="/login"
+            className="text-sm font-semibold text-primary underline-offset-2 hover:underline"
+          >
+            Try again
+          </Link>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -28,7 +28,7 @@ export const DialLink = React.forwardRef<HTMLAnchorElement, DialLinkProps>(
           if (event.defaultPrevented) return;
           event.preventDefault();
           event.stopPropagation();
-          // Stop nextjs-toploader / other document click listeners.
+          // Stop other document click listeners from treating this as navigation.
           event.nativeEvent.stopImmediatePropagation();
           dialPhone(phone);
         }}
