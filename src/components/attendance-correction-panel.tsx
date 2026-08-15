@@ -64,8 +64,8 @@ export function AttendanceCorrectionPanel({
         Correct missed attendance
       </h2>
       <p className="mt-1 text-xs font-medium text-amber-800/80">
-        {workDate} is in the past. OTP check-in is closed — record a correction
-        with a reason. The freelancer will be notified.
+        {workDate} is in the past. Live attendance is closed — record a
+        correction with a reason. The freelancer will be notified.
       </p>
 
       <div className="mt-3 space-y-2">

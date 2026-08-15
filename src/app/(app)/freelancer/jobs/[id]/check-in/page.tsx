@@ -10,7 +10,7 @@ import { fetchSessionProfile } from "@/hooks/use-session-profile";
 import { loadAttendanceRecordView } from "@/lib/load-attendance-records";
 import { createClient } from "@/lib/supabase/client";
 import { jobWorkDates, pickAttendanceDay } from "@/lib/work-dates";
-import type { Job } from "@/types/database";
+import type { AttendanceRequest, Job } from "@/types/database";
 
 function FreelancerCheckInPageInner() {
   const { id } = useParams<{ id: string }>();
@@ -28,6 +28,8 @@ function FreelancerCheckInPageInner() {
   );
   const [recordedEvent, setRecordedEvent] =
     useState<AttendanceRecordView | null>(null);
+  const [attendanceRequest, setAttendanceRequest] =
+    useState<AttendanceRequest | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -73,6 +75,16 @@ function FreelancerCheckInPageInner() {
         .select("kind, work_date")
         .eq("application_id", app.id);
 
+      const { data: latestRequest } = await supabase
+        .from("attendance_requests")
+        .select("*")
+        .eq("application_id", app.id)
+        .eq("kind", "check_in")
+        .eq("work_date", resolvedDate)
+        .order("requested_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
       const done = (events ?? []).some(
         (e) => e.kind === "check_in" && e.work_date === resolvedDate,
       );
@@ -92,6 +104,12 @@ function FreelancerCheckInPageInner() {
       setAlreadyDone(done);
       setDayEvents(events ?? []);
       setRecordedEvent(recorded);
+      setAttendanceRequest(
+        latestRequest?.status === "pending" &&
+          new Date(latestRequest.expires_at).getTime() <= Date.now()
+          ? ({ ...latestRequest, status: "expired" } as AttendanceRequest)
+          : ((latestRequest as AttendanceRequest | null) ?? null),
+      );
       setLoading(false);
     }
     void load();
@@ -108,6 +126,7 @@ function FreelancerCheckInPageInner() {
 
   return (
     <FreelancerAttendanceClient
+      key={`check_in-${workDate}`}
       job={job}
       applicationId={applicationId}
       kind="check_in"
@@ -115,6 +134,7 @@ function FreelancerCheckInPageInner() {
       alreadyDone={alreadyDone}
       dayEvents={dayEvents}
       recordedEvent={recordedEvent}
+      initialRequest={attendanceRequest}
     />
   );
 }

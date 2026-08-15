@@ -13,7 +13,7 @@ export type AttendanceRecordView = {
   lat: number | null;
   lng: number | null;
   photoUrl?: string | null;
-  source?: "otp" | "manual_correction" | null;
+  source?: "otp" | "manual_correction" | "business_confirmation" | null;
 };
 
 export function AttendanceRecordCard({
@@ -57,6 +57,10 @@ export function AttendanceRecordCard({
           {record.source === "manual_correction" ? (
             <span className="ml-1 font-medium text-muted-foreground">
               · corrected
+            </span>
+          ) : record.source === "business_confirmation" ? (
+            <span className="ml-1 font-medium text-muted-foreground">
+              · business confirmed
             </span>
           ) : null}
         </p>

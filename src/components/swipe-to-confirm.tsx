@@ -4,8 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { Check, ChevronRight, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const THUMB = 36;
-const END_PAD = 4;
+const THUMB = 44;
+const END_PAD = 0;
 const THRESHOLD = 0.82;
 
 export function SwipeToConfirm({
@@ -133,16 +133,16 @@ export function SwipeToConfirm({
       tabIndex={locked ? -1 : 0}
       onKeyDown={onKeyDown}
       className={cn(
-        "relative h-11 touch-none select-none overflow-hidden rounded-xl border border-primary/20 bg-primary/[0.08] outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+        "relative h-11 touch-none select-none overflow-hidden rounded-full bg-primary/[0.08] outline-none ring-1 ring-primary/20 focus-visible:ring-3 focus-visible:ring-ring/50",
         locked && !loading && "opacity-50",
         className,
       )}
     >
       <div
         aria-hidden
-        className="absolute inset-y-0 left-0 bg-primary/20"
+        className="absolute top-0 left-0 h-full rounded-full bg-primary"
         style={{
-          width: offset + THUMB / 2 + END_PAD,
+          width: offset + THUMB,
           transition: animating
             ? "width 280ms cubic-bezier(0.22, 1, 0.36, 1)"
             : "none",
@@ -183,7 +183,7 @@ export function SwipeToConfirm({
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
         className={cn(
-          "absolute top-1 left-1 z-10 flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-[0_4px_12px_rgba(142,48,255,0.3)]",
+          "absolute top-0 left-0 z-10 flex size-11 items-center justify-center rounded-full bg-primary text-primary-foreground",
           "touch-none disabled:cursor-not-allowed",
         )}
         style={{
@@ -194,11 +194,11 @@ export function SwipeToConfirm({
         }}
       >
         {loading ? (
-          <Loader2 className="size-4 animate-spin" />
+          <Loader2 className="size-6 animate-spin" />
         ) : showCheck ? (
-          <Check className="size-4 stroke-[2.5]" />
+          <Check className="size-6 stroke-[2.5]" />
         ) : (
-          <ChevronRight className="size-4 stroke-[2.5]" />
+          <ChevronRight className="size-6 stroke-[2.5]" />
         )}
       </button>
     </div>

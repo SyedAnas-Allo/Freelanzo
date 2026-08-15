@@ -3,13 +3,16 @@
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import type { AttendanceRecordView } from "@/components/attendance-record-card";
-import { BusinessAttendanceClient } from "@/components/business-attendance-client";
+import {
+  BusinessAttendanceClient,
+  type AttendanceRequestView,
+} from "@/components/business-attendance-client";
 import { PageLoading } from "@/components/page-loading";
 import { useRouter } from "@/hooks/use-app-router";
 import { fetchBusinessSession } from "@/hooks/use-session-profile";
 import { createClient } from "@/lib/supabase/client";
 import { localDateISO, jobWorkDates, pickAttendanceDay } from "@/lib/work-dates";
-import type { AttendanceKind, AttendanceOtp, Job } from "@/types/database";
+import type { AttendanceKind, Job } from "@/types/database";
 
 type MissedWorker = {
   applicationId: string;
@@ -21,12 +24,12 @@ type AttendancePageData = {
   job: Job;
   kind: AttendanceKind;
   workDate: string;
-  otp: AttendanceOtp | null;
   applicationIds: string[];
   checkedInCount: number;
   checkedOutCount: number;
   dayDoneCount: Record<string, number>;
   attendanceRecords: AttendanceRecordView[];
+  attendanceRequests: AttendanceRequestView[];
   missedWorkers: MissedWorker[];
 };
 
@@ -61,14 +64,6 @@ async function loadAttendanceData(
       ? dateParam
       : pickAttendanceDay(dates);
 
-  const { data: otp } = await supabase
-    .from("attendance_otps")
-    .select("*")
-    .eq("job_id", id)
-    .eq("kind", kind)
-    .eq("work_date", workDate)
-    .maybeSingle();
-
   const { data: apps } = await supabase
     .from("applications")
     .select("id")
@@ -80,10 +75,15 @@ async function loadAttendanceData(
   let checkedOutCount = 0;
   const dayDoneCount: Record<string, number> = {};
   let attendanceRecords: AttendanceRecordView[] = [];
+  let attendanceRequests: AttendanceRequestView[] = [];
   const missedWorkers: MissedWorker[] = [];
 
   if (appIds.length) {
-    const [{ data: events }, { data: contacts }] = await Promise.all([
+    const [
+      { data: events },
+      { data: contacts },
+      { data: requests },
+    ] = await Promise.all([
       supabase
         .from("attendance_events")
         .select(
@@ -95,6 +95,15 @@ async function loadAttendanceData(
         .select("application_id, full_name")
         .eq("job_id", id)
         .eq("status", "accepted"),
+      supabase
+        .from("attendance_requests")
+        .select(
+          "id, application_id, kind, work_date, photo_path, lat, lng, status, rejection_reason, requested_at, expires_at",
+        )
+        .in("application_id", appIds)
+        .eq("kind", kind)
+        .eq("work_date", workDate)
+        .order("requested_at", { ascending: true }),
     ]);
 
     checkedInCount = new Set(
@@ -122,6 +131,37 @@ async function loadAttendanceData(
         contact.application_id,
         contact.full_name ?? "Freelancer",
       ]),
+    );
+
+    attendanceRequests = await Promise.all(
+      (requests ?? []).map(async (request) => {
+        let photoUrl: string | null = null;
+        if (request.photo_path) {
+          const { data } = await supabase.storage
+            .from("attendance-photos")
+            .createSignedUrl(request.photo_path, 60 * 60);
+          photoUrl = data?.signedUrl ?? null;
+        }
+        return {
+          id: request.id,
+          applicationId: request.application_id,
+          name:
+            namesByApplication.get(request.application_id) ?? "Freelancer",
+          kind: request.kind,
+          workDate: request.work_date,
+          requestedAt: request.requested_at,
+          expiresAt: request.expires_at,
+          lat: request.lat,
+          lng: request.lng,
+          photoUrl,
+          status:
+            request.status === "pending" &&
+            new Date(request.expires_at).getTime() <= Date.now()
+              ? "expired"
+              : request.status,
+          rejectionReason: request.rejection_reason,
+        } as AttendanceRequestView;
+      }),
     );
 
     if (workDate < today) {
@@ -181,7 +221,11 @@ async function loadAttendanceData(
             lat: event.lat,
             lng: event.lng,
             photoUrl,
-            source: event.source as "otp" | "manual_correction" | null,
+            source: event.source as
+              | "otp"
+              | "manual_correction"
+              | "business_confirmation"
+              | null,
           };
         }),
       )
@@ -194,12 +238,12 @@ async function loadAttendanceData(
       job: typedJob,
       kind,
       workDate,
-      otp: (otp as AttendanceOtp | null) ?? null,
       applicationIds: appIds,
       checkedInCount,
       checkedOutCount,
       dayDoneCount,
       attendanceRecords,
+      attendanceRequests,
       missedWorkers,
     },
   };
@@ -253,13 +297,13 @@ function BusinessAttendancePageInner() {
       job={data.job}
       kind={data.kind}
       workDate={data.workDate}
-      initialOtp={data.otp}
       applicationIds={data.applicationIds}
       checkedInCount={data.checkedInCount}
       checkedOutCount={data.checkedOutCount}
       acceptedCount={data.applicationIds.length}
       dayDoneCount={data.dayDoneCount}
       attendanceRecords={data.attendanceRecords}
+      attendanceRequests={data.attendanceRequests}
       missedWorkers={data.missedWorkers}
       onReload={() => {
         void reload();

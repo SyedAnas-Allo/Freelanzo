@@ -2,8 +2,12 @@
 
 import { useRouter } from "@/hooks/use-app-router";
 import { useMemo, useState, useTransition } from "react";
-import { Camera, Shield } from "lucide-react";
-import { toast } from "sonner";
+import { Clock3, LogIn, LogOut, MapPin, Shield, X } from "lucide-react";
+import {
+  ensureOnlineForMutation,
+  flashSuccess,
+  presentAppError,
+} from "@/lib/flash-message";
 import { InfoCallout } from "@/components/info-callout";
 import {
   AttendanceRecordCard,
@@ -12,25 +16,49 @@ import {
 import { AttendanceCorrectionPanel } from "@/components/attendance-correction-panel";
 import { JobHeroCard } from "@/components/job-hero-card";
 import { PageContent } from "@/components/layout/page-content";
-import { NumberedStepper } from "@/components/numbered-stepper";
-import { OtpCountdown, OtpDigitDisplay } from "@/components/otp-digit-row";
 import { PageBack } from "@/components/page-back";
 import { WorkDayChips } from "@/components/work-day-chips";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Surface } from "@/components/ui/surface";
+import { SwipeToConfirm } from "@/components/swipe-to-confirm";
 import { useRealtimeRefresh } from "@/hooks/use-realtime-refresh";
 import { createClient } from "@/lib/supabase/client";
+import { cn } from "@/lib/utils";
 import {
   jobWorkDates,
   localDateISO,
   pickAttendanceDay,
 } from "@/lib/work-dates";
-import type { AttendanceKind, AttendanceOtp, Job } from "@/types/database";
+import type { AttendanceKind, Job } from "@/types/database";
 
 type MissedWorker = {
   applicationId: string;
   name: string;
   needs: AttendanceKind;
+};
+
+export type AttendanceRequestView = {
+  id: string;
+  applicationId: string;
+  name: string;
+  kind: AttendanceKind;
+  workDate: string;
+  requestedAt: string;
+  expiresAt: string;
+  lat: number | null;
+  lng: number | null;
+  photoUrl: string | null;
+  status: "pending" | "confirmed" | "rejected" | "expired" | "cancelled";
+  rejectionReason: string | null;
 };
 
 function AttendanceRecordsSection({
@@ -56,24 +84,91 @@ function AttendanceRecordsSection({
   );
 }
 
+/** Segmented switch between the arrivals (check-in) and leaving (check-out) views. */
+function AttendanceKindTabs({
+  value,
+  onChange,
+  checkedInCount,
+  checkedOutCount,
+  acceptedCount,
+}: {
+  value: AttendanceKind;
+  onChange: (kind: AttendanceKind) => void;
+  checkedInCount: number;
+  checkedOutCount: number;
+  acceptedCount: number;
+}) {
+  const tabs = [
+    {
+      kind: "check_in" as AttendanceKind,
+      label: "Check-in",
+      icon: LogIn,
+      done: checkedInCount,
+    },
+    {
+      kind: "check_out" as AttendanceKind,
+      label: "Check-out",
+      icon: LogOut,
+      done: checkedOutCount,
+    },
+  ];
+
+  return (
+    <div
+      role="tablist"
+      aria-label="Attendance step"
+      className="grid grid-cols-2 gap-1 rounded-xl border border-border/70 bg-muted/60 p-1"
+    >
+      {tabs.map(({ kind, label, icon: Icon, done }) => {
+        const active = kind === value;
+        return (
+          <button
+            key={kind}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            onClick={() => onChange(kind)}
+            className={cn(
+              "rounded-lg px-3 py-2 transition-colors",
+              active
+                ? "bg-card text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <span className="flex items-center justify-center gap-1.5 text-[13px] font-bold">
+              <Icon
+                className={cn("size-3.5", active && "text-primary")}
+                aria-hidden
+              />
+              {label}
+            </span>
+            <span className="mt-0.5 block text-[11px] font-medium">
+              {done}/{acceptedCount} done
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export function BusinessAttendanceClient({
   job,
   kind,
   workDate: initialWorkDate,
-  initialOtp,
   applicationIds,
   checkedInCount,
   checkedOutCount,
   acceptedCount,
   dayDoneCount,
   attendanceRecords,
+  attendanceRequests,
   missedWorkers = [],
   onReload,
 }: {
   job: Job;
   kind: AttendanceKind;
   workDate: string;
-  initialOtp: AttendanceOtp | null;
   applicationIds: string[];
   checkedInCount: number;
   checkedOutCount: number;
@@ -81,8 +176,9 @@ export function BusinessAttendanceClient({
   /** Per work_date: freelancers who fully checked out that day */
   dayDoneCount?: Record<string, number>;
   attendanceRecords: AttendanceRecordView[];
+  attendanceRequests: AttendanceRequestView[];
   missedWorkers?: MissedWorker[];
-  /** Re-fetch attendance data (realtime + after OTP generate). */
+  /** Re-fetch attendance data after realtime or review actions. */
   onReload?: () => void;
 }) {
   const router = useRouter();
@@ -90,7 +186,10 @@ export function BusinessAttendanceClient({
   const [workDate, setWorkDate] = useState(
     initialWorkDate || pickAttendanceDay(dates),
   );
-  const [otp, setOtp] = useState(initialOtp);
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [rejectTarget, setRejectTarget] =
+    useState<AttendanceRequestView | null>(null);
+  const [rejectionReason, setRejectionReason] = useState("Not on site");
   const [pending, startTransition] = useTransition();
   const isCheckIn = kind === "check_in";
   const kindLabel = isCheckIn ? "Check-In" : "Check-Out";
@@ -116,6 +215,15 @@ export function BusinessAttendanceClient({
     onEvent: () => onReload?.(),
   });
 
+  useRealtimeRefresh({
+    channelName: `attendance-requests:${job.id}:${kind}:${workDate}`,
+    table: "attendance_requests",
+    event: "*",
+    filter: attendanceFilter,
+    enabled: applicationIds.length > 0 && !!onReload,
+    onEvent: () => onReload?.(),
+  });
+
   const doneDates = useMemo(() => {
     const set = new Set<string>();
     if (!dayDoneCount) return set;
@@ -131,26 +239,64 @@ export function BusinessAttendanceClient({
 
   function selectDay(date: string) {
     setWorkDate(date);
-    setOtp(null);
+    setSelected(new Set());
     router.push(
       `/business/jobs/${job.id}/attendance?kind=${kind}&date=${date}`,
     );
   }
 
-  function generate() {
+  function selectKind(nextKind: AttendanceKind) {
+    if (nextKind === kind) return;
+    setSelected(new Set());
+    router.push(
+      `/business/jobs/${job.id}/attendance?kind=${nextKind}&date=${workDate}`,
+    );
+  }
+
+  const waitingRequests = attendanceRequests.filter(
+    (request) => request.status === "pending",
+  );
+  const expiredCount = attendanceRequests.filter(
+    (request) => request.status === "expired",
+  ).length;
+
+  function toggleSelected(id: string, checked: boolean) {
+    setSelected((current) => {
+      const next = new Set(current);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  function review(
+    requestIds: string[],
+    decision: "confirmed" | "rejected",
+    reason?: string,
+  ) {
+    if (requestIds.length === 0) return;
+    if (!ensureOnlineForMutation()) return;
     startTransition(async () => {
       const supabase = createClient();
-      const { data, error } = await supabase.rpc("generate_attendance_otp", {
-        p_job_id: job.id,
-        p_kind: kind,
-        p_work_date: workDate,
+      const { error } = await supabase.rpc("review_attendance_requests", {
+        p_request_ids: requestIds,
+        p_decision: decision,
+        p_rejection_reason: decision === "rejected" ? reason : null,
       });
       if (error) {
-        toast.error(error.message);
+        presentAppError(error, {
+          onRetry: () => review(requestIds, decision, reason),
+        });
+        onReload?.();
         return;
       }
-      setOtp(data as AttendanceOtp);
-      toast.success(`${isCheckIn ? "Check-in" : "Check-out"} OTP generated`);
+      flashSuccess(
+        decision === "confirmed"
+          ? `${requestIds.length} ${kindLabel.toLowerCase()} request${requestIds.length === 1 ? "" : "s"} confirmed`
+          : `${kindLabel} request declined`,
+      );
+      setSelected(new Set());
+      setRejectTarget(null);
       onReload?.();
     });
   }
@@ -174,83 +320,171 @@ export function BusinessAttendanceClient({
         </div>
       ) : null}
 
+      <div className="space-y-2">
+        <p className="text-xs font-semibold text-muted-foreground">
+          {multi ? "Which step for this day?" : "Which step?"}
+        </p>
+        <AttendanceKindTabs
+          value={kind}
+          onChange={selectKind}
+          checkedInCount={checkedInCount}
+          checkedOutCount={checkedOutCount}
+          acceptedCount={acceptedCount}
+        />
+      </div>
+
       {isPastDay && missedWorkers.length > 0 ? (
         <AttendanceCorrectionPanel workDate={workDate} workers={missedWorkers} />
       ) : null}
 
       {!isPastDay && !isFutureDay ? (
-        <Surface>
-          <h2 className="text-sm font-extrabold">
-            {kindLabel} Process
-            {multi ? (
-              <span className="ml-1 font-semibold text-muted-foreground">
-                · Day {dates.indexOf(workDate) + 1}/{dates.length}
+        <div className="space-y-3">
+          <Surface>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-extrabold">
+                  {kindLabel} requests
+                  {multi ? (
+                    <span className="ml-1 font-semibold text-muted-foreground">
+                      · Day {dates.indexOf(workDate) + 1}/{dates.length}
+                    </span>
+                  ) : null}
+                </h2>
+                <p className="mt-1 text-xs font-light text-muted-foreground">
+                  Freelancers send a live photo and location from their app.
+                  Confirm them as they arrive.
+                </p>
+              </div>
+              <span className="shrink-0 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-bold text-primary">
+                {waitingRequests.length} waiting
               </span>
+            </div>
+
+            {waitingRequests.length > 0 ? (
+              <div className="mt-4 space-y-3 border-t border-border/70 pt-3">
+                <label className="flex items-center gap-2 text-xs font-semibold">
+                  <Checkbox
+                    checked={
+                      selected.size === waitingRequests.length &&
+                      waitingRequests.length > 0
+                    }
+                    onCheckedChange={(checked) =>
+                      setSelected(
+                        checked === true
+                          ? new Set(waitingRequests.map((request) => request.id))
+                          : new Set(),
+                      )
+                    }
+                  />
+                  Select all ({waitingRequests.length})
+                </label>
+                <SwipeToConfirm
+                  label={
+                    selected.size === 0
+                      ? "Select who has arrived"
+                      : `Slide to confirm ${selected.size}`
+                  }
+                  confirmLabel={`Confirmed ${selected.size}`}
+                  disabled={selected.size === 0}
+                  loading={pending}
+                  onConfirm={() => review(Array.from(selected), "confirmed")}
+                />
+              </div>
+            ) : (
+              <div className="mt-4 rounded-xl bg-muted/40 px-3 py-4 text-center">
+                <Shield className="mx-auto size-5 text-muted-foreground" />
+                <p className="mt-1.5 text-xs font-semibold">
+                  No one is waiting right now
+                </p>
+                <p className="mt-0.5 text-[11px] font-light text-muted-foreground">
+                  New requests appear here automatically.
+                </p>
+              </div>
+            )}
+            {expiredCount > 0 ? (
+              <p className="mt-3 text-[11px] text-muted-foreground">
+                {expiredCount} expired request{expiredCount === 1 ? "" : "s"}{" "}
+                hidden · ask the freelancer to send a new one.
+              </p>
             ) : null}
-          </h2>
-          <div className="mt-4">
-            <NumberedStepper
-              steps={[
-                {
-                  title: `Share ${kindLabel} OTP`,
-                  description: (
-                    <div className="space-y-3">
-                      {otp && otp.work_date === workDate ? (
-                        <>
-                          <OtpDigitDisplay code={otp.code} />
-                          <OtpCountdown expiresAt={otp.expires_at} />
-                        </>
-                      ) : (
-                        <p className="text-xs font-light text-muted-foreground">
-                          Generate a 6-digit OTP for freelancers on site
-                          {multi ? " this day" : ""}.
-                        </p>
+          </Surface>
+
+          {waitingRequests.map((request) => (
+            <Surface key={request.id} className="overflow-hidden p-0">
+              {request.photoUrl ? (
+                <a href={request.photoUrl} target="_blank" rel="noreferrer">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={request.photoUrl}
+                    alt={`${request.name} attendance request`}
+                    className="aspect-[16/9] w-full object-cover"
+                  />
+                </a>
+              ) : null}
+              <div className="space-y-3 p-3.5">
+                <div className="flex items-start gap-3">
+                  <Checkbox
+                    className="mt-0.5"
+                    checked={selected.has(request.id)}
+                    onCheckedChange={(checked) =>
+                      toggleSelected(request.id, checked === true)
+                    }
+                    aria-label={`Select ${request.name}`}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-bold">{request.name}</p>
+                    <p className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                      <Clock3 className="size-3 text-primary" />
+                      Requested{" "}
+                      {new Date(request.requestedAt).toLocaleTimeString(
+                        "en-IN",
+                        {
+                          hour: "numeric",
+                          minute: "2-digit",
+                        },
                       )}
-                      <Button
-                        type="button"
-                        onClick={generate}
-                        disabled={pending}
-                        className="w-full"
-                      >
-                        {otp && otp.work_date === workDate
-                          ? "Regenerate OTP"
-                          : "Generate OTP"}
-                      </Button>
-                    </div>
-                  ),
-                },
-                {
-                  title: "Ask Freelancer to Enter OTP",
-                  icon: <Shield className="size-4" />,
-                  description: (
-                    <p className="text-xs font-light text-muted-foreground">
-                      Freelancers enter this code in their app to verify
-                      attendance.
                     </p>
-                  ),
-                },
-                {
-                  title: `${kindLabel} evidence`,
-                  icon: <Camera className="size-4" />,
-                  description: (
-                    <p className="text-xs font-light text-muted-foreground">
-                      Live photo, time, and GPS are saved when freelancers
-                      submit. See all records for this day below.
+                    <p className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                      <MapPin className="size-3 text-primary" />
+                      {request.lat != null && request.lng != null
+                        ? "Location recorded"
+                        : "Location unavailable"}
                     </p>
-                  ),
-                },
-              ]}
-            />
-          </div>
-        </Surface>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <SwipeToConfirm
+                    label={`Slide to confirm ${request.name.split(" ")[0]}`}
+                    confirmLabel="Confirmed"
+                    loading={pending}
+                    onConfirm={() => review([request.id], "confirmed")}
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    disabled={pending}
+                    onClick={() => {
+                      setRejectionReason("Not on site");
+                      setRejectTarget(request);
+                    }}
+                  >
+                    <X className="size-3.5" />
+                    Reject
+                  </Button>
+                </div>
+              </div>
+            </Surface>
+          ))}
+        </div>
       ) : isFutureDay ? (
         <InfoCallout
           title="Scheduled work day"
           icon={<Shield className="size-4" />}
         >
           <p>
-            OTP check-in opens on {workDate}. Come back on that day to generate
-            codes.
+            Attendance opens on {workDate}. Requests will appear here when
+            freelancers arrive on that day.
           </p>
         </InfoCallout>
       ) : missedWorkers.length === 0 ? (
@@ -294,40 +528,16 @@ export function BusinessAttendanceClient({
         )}
       </InfoCallout>
 
-      <div className="rounded-xl border border-border/70 bg-card p-4 text-sm">
-        <p className="font-bold">
-          Attendance{multi ? " this day" : ""}
-        </p>
-        <p className="mt-1 text-xs font-light text-muted-foreground">
-          Checked in {checkedInCount}/{acceptedCount} · Checked out{" "}
-          {checkedOutCount}/{acceptedCount}
-        </p>
-      </div>
-
-      <div className="grid grid-cols-2 gap-2">
+      {isCheckIn && checkedInCount >= acceptedCount && acceptedCount > 0 ? (
         <Button
-          variant={isCheckIn ? "default" : "outline"}
+          variant="outline"
           className="w-full"
-          onClick={() =>
-            router.push(
-              `/business/jobs/${job.id}/attendance?kind=check_in&date=${workDate}`,
-            )
-          }
+          onClick={() => selectKind("check_out")}
         >
-          Check-In
+          <LogOut className="size-4" />
+          Go to check-out
         </Button>
-        <Button
-          variant={!isCheckIn ? "default" : "outline"}
-          className="w-full"
-          onClick={() =>
-            router.push(
-              `/business/jobs/${job.id}/attendance?kind=check_out&date=${workDate}`,
-            )
-          }
-        >
-          Check-Out
-        </Button>
-      </div>
+      ) : null}
 
       {allDaysCompleteForPayment || job.status === "completed" ? (
         <Button
@@ -337,6 +547,60 @@ export function BusinessAttendanceClient({
           Continue to Payment
         </Button>
       ) : null}
+
+      <Dialog
+        open={rejectTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !pending) setRejectTarget(null);
+        }}
+      >
+        <DialogContent showCloseButton={!pending}>
+          <DialogHeader>
+            <DialogTitle>Reject attendance request?</DialogTitle>
+            <DialogDescription>
+              {rejectTarget?.name ?? "This freelancer"} can capture a new photo
+              and try again.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-2">
+            {["Not on site", "Wrong person", "Unclear photo"].map((reason) => (
+              <button
+                key={reason}
+                type="button"
+                disabled={pending}
+                onClick={() => setRejectionReason(reason)}
+                className={`rounded-lg border px-3 py-2 text-left text-sm font-medium transition ${
+                  rejectionReason === reason
+                    ? "border-primary bg-primary/5 text-primary"
+                    : "border-border/70"
+                }`}
+              >
+                {reason}
+              </button>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={pending}
+              onClick={() => setRejectTarget(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={pending || !rejectTarget}
+              onClick={() => {
+                if (rejectTarget) {
+                  review([rejectTarget.id], "rejected", rejectionReason);
+                }
+              }}
+            >
+              {pending ? "Rejecting…" : "Reject request"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </PageContent>
   );
 }
