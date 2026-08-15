@@ -16,13 +16,15 @@ import {
 } from "@/components/ui/select";
 import {
   postJobTimeOptions,
-  type PostJobFormController,
+  type JobFormController,
 } from "./use-post-job-form";
 
 export function JobScheduleFields({
   controller,
+  scheduleLocked = false,
 }: {
-  controller: PostJobFormController;
+  controller: JobFormController;
+  scheduleLocked?: boolean;
 }) {
   const {
     form,
@@ -49,9 +51,10 @@ export function JobScheduleFields({
               variant="ghost"
               size="sm"
               className="text-primary"
+              disabled={scheduleLocked}
               onClick={() => setShowDays((visible) => !visible)}
             >
-              {showDays ? "Hide" : "Change"}
+              {scheduleLocked ? "Locked" : showDays ? "Hide" : "Change"}
             </Button>
           }
         />
@@ -72,6 +75,7 @@ export function JobScheduleFields({
           <TimeSelect
             label="Starts"
             value={form.start_time}
+            disabled={scheduleLocked}
             onChange={(start_time) =>
               setForm((current) => ({ ...current, start_time }))
             }
@@ -80,6 +84,7 @@ export function JobScheduleFields({
           <TimeSelect
             label="Ends"
             value={form.end_time}
+            disabled={scheduleLocked}
             onChange={(end_time) =>
               setForm((current) => ({ ...current, end_time }))
             }
@@ -184,10 +189,12 @@ function FieldHeader({
 function TimeSelect({
   label,
   value,
+  disabled = false,
   onChange,
 }: {
   label: string;
   value: string;
+  disabled?: boolean;
   onChange: (value: string) => void;
 }) {
   return (
@@ -195,7 +202,7 @@ function TimeSelect({
       <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
         {label}
       </p>
-      <Select value={value} onValueChange={onChange}>
+      <Select value={value} disabled={disabled} onValueChange={onChange}>
         <SelectTrigger
           aria-label={`${label} at`}
           className="h-10 w-full rounded-xl border-border/70 bg-muted/30 px-3 text-sm font-bold shadow-none"

@@ -28,12 +28,12 @@ import {
 } from "@/components/ui/select";
 import { CATEGORIES, formatPay, jobDayTotal, jobEngagementTotal } from "@/lib/utils";
 import type { JobCategory, JobGenderPreference } from "@/types/database";
-import type { PostJobFormController } from "./use-post-job-form";
+import type { JobFormController } from "./use-post-job-form";
 
 export function JobBasicsFields({
   controller: { form, setForm },
 }: {
-  controller: PostJobFormController;
+  controller: JobFormController;
 }) {
   return (
     <>
@@ -76,6 +76,27 @@ export function JobBasicsFields({
                   </SelectItem>
                 ),
               )}
+            </SelectContent>
+          </Select>
+        </FormField>
+
+        <FormField icon={VenusAndMars} label="Gender preference">
+          <Select
+            value={form.gender_preference}
+            onValueChange={(genderPreference) =>
+              setForm((current) => ({
+                ...current,
+                gender_preference: genderPreference as JobGenderPreference,
+              }))
+            }
+          >
+            <SelectTrigger className={formSelectTriggerClassName}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="any">Any</SelectItem>
+              <SelectItem value="male">Male</SelectItem>
+              <SelectItem value="female">Female</SelectItem>
             </SelectContent>
           </Select>
         </FormField>
@@ -138,27 +159,6 @@ export function JobBasicsFields({
             <SelectContent>
               <SelectItem value="unskilled">Unskilled</SelectItem>
               <SelectItem value="skilled">Skilled</SelectItem>
-            </SelectContent>
-          </Select>
-        </FormField>
-
-        <FormField icon={VenusAndMars} label="Gender preference">
-          <Select
-            value={form.gender_preference}
-            onValueChange={(genderPreference) =>
-              setForm((current) => ({
-                ...current,
-                gender_preference: genderPreference as JobGenderPreference,
-              }))
-            }
-          >
-            <SelectTrigger className={formSelectTriggerClassName}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="any">Any</SelectItem>
-              <SelectItem value="male">Male</SelectItem>
-              <SelectItem value="female">Female</SelectItem>
             </SelectContent>
           </Select>
         </FormField>

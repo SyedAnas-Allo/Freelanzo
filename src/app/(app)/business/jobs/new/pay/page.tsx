@@ -4,17 +4,34 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "@/hooks/use-app-router";
 import { Banknote, Check, Shield } from "lucide-react";
-import { toast } from "sonner";
 import { InfoCallout } from "@/components/info-callout";
 import { PageContent } from "@/components/layout/page-content";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Surface } from "@/components/ui/surface";
+import {
+  clearSessionDraft,
+  SESSION_DRAFT_KEYS,
+} from "@/hooks/use-session-draft";
+import {
+  ensureOnlineForMutation,
+  flashSuccess,
+  presentAppError,
+} from "@/lib/flash-message";
+import {
+  getPostJobSetupGaps,
+  postJobSetupHref,
+  postJobSetupMessage,
+} from "@/lib/profile-eligibility";
+import { ensurePostJobDraftId } from "@/lib/post-job-draft";
 import { createClient } from "@/lib/supabase/client";
 import { formatPay } from "@/lib/utils";
 import type { JobGenderPreference } from "@/types/database";
 
+const POST_JOB_PATH = "/business/jobs/new";
+
 type Draft = {
+  id: string;
   business_id: string;
   title: string;
   category: string;
@@ -53,25 +70,103 @@ export default function PostJobPayPage() {
       return;
     }
     try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        throw new Error("Invalid draft");
+      }
+      const persistedDraft = ensurePostJobDraftId(parsed);
+      sessionStorage.setItem(
+        "freelanzo_job_draft",
+        JSON.stringify(persistedDraft),
+      );
       // Hydrate client-only session storage after the route mounts.
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setDraft(JSON.parse(raw) as Draft);
+      setDraft(persistedDraft as Draft);
     } catch {
       router.replace("/business/jobs/new");
     }
   }, [router]);
 
+  function finishPublishing(jobId: string, publishedDraft: Draft) {
+    setPaying(false);
+    clearSessionDraft(
+      "freelanzo_job_draft",
+      SESSION_DRAFT_KEYS.postJobForm,
+      SESSION_DRAFT_KEYS.postJobLocation,
+      SESSION_DRAFT_KEYS.postJobPaymentAccepted,
+    );
+    flashSuccess(
+      publishedDraft.fee === 0
+        ? "Gig posted — free credit used"
+        : "Payment successful · Gig live",
+    );
+    router.push(`/business/jobs/${jobId}/posted`);
+    router.refresh();
+  }
+
   async function payAndPublish() {
     if (!draft) return;
+    if (!ensureOnlineForMutation()) return;
     setPaying(true);
 
     // Brief pause so the publish button shows processing state
     await new Promise((r) => setTimeout(r, 400));
 
     const supabase = createClient();
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    const user = session?.user ?? null;
+    if (!user) {
+      setPaying(false);
+      presentAppError(new Error("Not authenticated"));
+      router.push("/login");
+      return;
+    }
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("phone")
+      .eq("id", user.id)
+      .maybeSingle();
+    const phoneGaps = getPostJobSetupGaps({
+      phone: profile?.phone ?? null,
+    });
+    if (phoneGaps.length > 0) {
+      setPaying(false);
+      presentAppError({
+        category: "eligibility",
+        message: postJobSetupMessage(phoneGaps),
+        retryable: false,
+        action: { label: "Add phone", href: postJobSetupHref(POST_JOB_PATH) },
+      });
+      router.push(postJobSetupHref(POST_JOB_PATH));
+      return;
+    }
+
+    const findPublishedJob = () =>
+      supabase
+        .from("jobs")
+        .select("id")
+        .eq("id", draft.id)
+        .eq("business_id", draft.business_id)
+        .maybeSingle();
+
+    const { data: existingJob, error: lookupError } = await findPublishedJob();
+    if (lookupError) {
+      setPaying(false);
+      presentAppError(lookupError, { onRetry: () => void payAndPublish() });
+      return;
+    }
+    if (existingJob) {
+      finishPublishing(existingJob.id, draft);
+      return;
+    }
+
     const { data: job, error } = await supabase
       .from("jobs")
       .insert({
+        id: draft.id,
         business_id: draft.business_id,
         title: draft.title,
         category: draft.category as never,
@@ -101,18 +196,19 @@ export default function PostJobPayPage() {
       .select("id")
       .single();
 
-    setPaying(false);
     if (error) {
-      toast.error(error.message);
+      const { data: reconciledJob } = await findPublishedJob();
+      if (reconciledJob) {
+        finishPublishing(reconciledJob.id, draft);
+        return;
+      }
+
+      setPaying(false);
+      presentAppError(error, { onRetry: () => void payAndPublish() });
       return;
     }
 
-    sessionStorage.removeItem("freelanzo_job_draft");
-    toast.success(
-      draft.fee === 0 ? "Gig posted — free credit used" : "Payment successful · Gig live",
-    );
-    router.push(`/business/jobs/${job.id}/posted`);
-    router.refresh();
+    finishPublishing(job.id, draft);
   }
 
   if (!draft) {

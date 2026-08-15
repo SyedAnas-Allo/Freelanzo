@@ -8,7 +8,7 @@ import {
 import { FormGroup } from "@/components/forms/form-group";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import type { PostJobFormController } from "./use-post-job-form";
+import type { JobFormController } from "./use-post-job-form";
 
 const TEXTAREA_CLASS_NAME =
   "min-h-6 resize-none border-0 bg-transparent p-0 text-sm font-medium shadow-none focus-visible:ring-0 dark:bg-transparent";
@@ -16,7 +16,7 @@ const TEXTAREA_CLASS_NAME =
 export function JobDescriptionFields({
   controller: { form, setForm },
 }: {
-  controller: PostJobFormController;
+  controller: JobFormController;
 }) {
   return (
     <FormGroup>
