@@ -28,11 +28,15 @@ export function MetaPill({
   children,
   tone,
   className,
+  ...props
 }: {
   children: React.ReactNode;
   className?: string;
-} & VariantProps<typeof metaPillVariants>) {
+} & VariantProps<typeof metaPillVariants> &
+  React.ComponentPropsWithoutRef<"span">) {
   return (
-    <span className={cn(metaPillVariants({ tone }), className)}>{children}</span>
+    <span className={cn(metaPillVariants({ tone }), className)} {...props}>
+      {children}
+    </span>
   );
 }

@@ -3,6 +3,7 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { DialLink } from "@/components/dial-link";
 import {
   Sheet,
   SheetContent,
@@ -15,19 +16,22 @@ import {
   participantInitials,
   type ChatParticipant,
 } from "@/lib/chat";
-import { AtSign } from "lucide-react";
+import { AtSign, Phone } from "lucide-react";
 
 export function ChatParticipantsSheet({
   open,
   onOpenChange,
   participants,
   canAddress,
+  callLocked = false,
   onAddress,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   participants: ChatParticipant[];
   canAddress: boolean;
+  /** Same window as ContactActionBar — Call stays visible but disabled. */
+  callLocked?: boolean;
   onAddress: (participant: ChatParticipant) => void;
 }) {
   const active = participants.filter((p) => p.isActive);
@@ -55,6 +59,7 @@ export function ChatParticipantsSheet({
               key={p.userId}
               participant={p}
               canAddress={canAddress && !p.isMe}
+              callLocked={callLocked}
               onAddress={() => {
                 onAddress(p);
                 onOpenChange(false);
@@ -74,6 +79,7 @@ export function ChatParticipantsSheet({
                   key={p.userId}
                   participant={p}
                   canAddress={false}
+                  callLocked={callLocked}
                 />
               ))}
             </div>
@@ -87,12 +93,17 @@ export function ChatParticipantsSheet({
 function ParticipantRow({
   participant,
   canAddress,
+  callLocked,
   onAddress,
 }: {
   participant: ChatParticipant;
   canAddress: boolean;
+  callLocked: boolean;
   onAddress?: () => void;
 }) {
+  const showCall = participant.isActive && !participant.isMe;
+  const canCall = showCall && Boolean(participant.phone) && !callLocked;
+
   return (
     <div className="flex items-center gap-3 rounded-xl px-1 py-2">
       <Avatar className="size-10">
@@ -118,6 +129,31 @@ function ParticipantRow({
           <p className="text-[11px] font-light text-muted-foreground">Left</p>
         ) : null}
       </div>
+      {showCall ? (
+        canCall ? (
+          <DialLink
+            phone={participant.phone!}
+            className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md px-2 text-sm font-medium text-primary transition-colors hover:bg-accent hover:text-accent-foreground"
+            aria-label={`Call ${participant.name}`}
+          >
+            <Phone className="size-3.5" />
+            Call
+          </DialLink>
+        ) : (
+          <span
+            className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md px-2 text-sm font-medium text-muted-foreground opacity-50"
+            aria-disabled="true"
+            title={
+              callLocked
+                ? "Number locked after gig ended"
+                : "Phone number unavailable"
+            }
+          >
+            <Phone className="size-3.5" />
+            Call
+          </span>
+        )
+      ) : null}
       {canAddress && onAddress ? (
         <Button
           type="button"

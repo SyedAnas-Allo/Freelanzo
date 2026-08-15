@@ -114,12 +114,15 @@ export async function loadJobChatParticipants(
 
   const { data: profiles } = await supabase
     .from("profiles")
-    .select("id, full_name, photo_url")
+    .select("id, full_name, photo_url, phone")
     .in("id", userIds);
 
   const profileMap = new Map(
     (
-      (profiles ?? []) as Pick<Profile, "id" | "full_name" | "photo_url">[]
+      (profiles ?? []) as Pick<
+        Profile,
+        "id" | "full_name" | "photo_url" | "phone"
+      >[]
     ).map((p) => [p.id, p]),
   );
 
@@ -131,6 +134,7 @@ export async function loadJobChatParticipants(
         userId: m.user_id,
         name,
         photoUrl: profile?.photo_url ?? null,
+        phone: profile?.phone ?? null,
         role: m.role as JobChatMembershipRole,
         isActive: m.left_at == null,
         isMe: m.user_id === currentUserId,

@@ -9,7 +9,6 @@ import {
   Send,
   Users,
 } from "lucide-react";
-import { toast } from "sonner";
 import { ChatMessageBody } from "@/components/chat-message-body";
 import { ChatParticipantsSheet } from "@/components/chat-participants-sheet";
 import { PageBack } from "@/components/page-back";
@@ -21,6 +20,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Textarea } from "@/components/ui/textarea";
+import { requestBadgesRefresh } from "@/hooks/use-shell-refresh";
+import {
+  ensureOnlineForMutation,
+  flashSuccess,
+  presentAppError,
+} from "@/lib/flash-message";
 import {
   addressParticipant,
   chatComposerDisabledReason,
@@ -96,7 +101,12 @@ export function JobChatRoom({
 
   const markRead = useCallback(async () => {
     const supabase = createClient();
-    await supabase.rpc("mark_job_chat_read", { p_job_id: chat.job_id });
+    const { error } = await supabase.rpc("mark_job_chat_read", {
+      p_job_id: chat.job_id,
+    });
+    if (!error) {
+      requestBadgesRefresh();
+    }
   }, [chat.job_id]);
 
   useEffect(() => {
@@ -115,7 +125,9 @@ export function JobChatRoom({
       )
     : null;
   const newestAtRef = useRef(newestAt);
-  newestAtRef.current = newestAt;
+  useEffect(() => {
+    newestAtRef.current = newestAt;
+  }, [newestAt]);
 
   const ingestRows = useCallback(
     (rows: JobMessage[]) => {
@@ -252,15 +264,20 @@ export function JobChatRoom({
   async function copyMessage(body: string) {
     try {
       await navigator.clipboard.writeText(body);
-      toast.success("Message copied");
+      flashSuccess("Message copied");
     } catch {
-      toast.error("Could not copy message");
+      presentAppError({
+        category: "device",
+        message: "Could not copy message",
+        retryable: false,
+      });
     }
   }
 
   async function send() {
     const body = text.trim();
     if (!body || sending || disabledReason) return;
+    if (!ensureOnlineForMutation()) return;
 
     setSending(true);
     const optimisticId = `local-${crypto.randomUUID()}`;
@@ -295,7 +312,9 @@ export function JobChatRoom({
       setMessages((prev) => prev.filter((m) => m.id !== optimisticId));
       setText(body);
       setCursor(body.length);
-      toast.error(error?.message || "Could not send message");
+      presentAppError(error ?? new Error("Could not send message"), {
+        onRetry: () => void send(),
+      });
       setSending(false);
       return;
     }
@@ -591,6 +610,7 @@ export function JobChatRoom({
         onOpenChange={setParticipantsOpen}
         participants={participants}
         canAddress={!disabledReason}
+        callLocked={Boolean(chat.closed_at)}
         onAddress={address}
       />
     </div>

@@ -64,7 +64,7 @@ export default function SafetyPage() {
       <InfoCallout title="Safety tips">
         <ul className="list-disc space-y-1.5 pl-4">
           <li>Share your live gig status with a trusted contact</li>
-          <li>Use check-in OTP + photo so attendance is verified</li>
+          <li>Use live-photo attendance requests so presence is verified</li>
           <li>Phone unlocks after accept, and locks again when the gig ends</li>
           <li>Leave immediately if you feel unsafe — then report</li>
         </ul>

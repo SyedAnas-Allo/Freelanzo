@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { requestBadgesRefresh } from "@/hooks/use-shell-refresh";
 import { createClient } from "@/lib/supabase/client";
 
 async function markRead(notificationId: string) {
@@ -11,12 +12,16 @@ async function markRead(notificationId: string) {
   const user = session?.user ?? null;
   if (!user) return;
 
-  await supabase
+  const { data, error } = await supabase
     .from("notifications")
     .update({ read_at: new Date().toISOString() })
     .eq("id", notificationId)
     .eq("user_id", user.id)
-    .is("read_at", null);
+    .is("read_at", null)
+    .select("id");
+  if (error || !data?.length) return;
+
+  requestBadgesRefresh({ decrementUnread: 1 });
 }
 
 export function NotificationItem({

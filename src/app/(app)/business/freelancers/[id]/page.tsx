@@ -146,7 +146,9 @@ function FreelancerProfileInner() {
     );
   }
 
-  const reveal = application ? isHiredStatus(application.status) : false;
+  const isSelected = application ? isHiredStatus(application.status) : false;
+  const canContact =
+    application?.status === "applied" || isSelected;
   const phoneUnlocked = job ? isJobPhoneUnlocked(job.status) : false;
   const photos: string[] = [];
 
@@ -183,17 +185,18 @@ function FreelancerProfileInner() {
           <div className="space-y-3">
             <div className="rounded-xl border border-border/70 bg-card p-4">
               <h2 className="text-sm font-extrabold">Contact</h2>
-              {reveal && job ? (
+              {canContact && job ? (
                 <ContactActionBar
                   className="mt-3"
                   phone={phoneUnlocked ? profile.phone : null}
                   callLocked={!phoneUnlocked}
                   chatHref={`/messages/${job.id}`}
+                  showChat={isSelected}
                 />
               ) : (
                 <p className="mt-2 flex items-start gap-2 text-sm font-light text-muted-foreground">
                   <UserRound className="mt-0.5 size-4 shrink-0 text-primary" />
-                  Contact unlocks after you Accept.
+                  Calling is available while an application is under review.
                 </p>
               )}
             </div>

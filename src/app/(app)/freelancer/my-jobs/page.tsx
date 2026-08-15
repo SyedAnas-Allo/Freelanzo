@@ -3,13 +3,14 @@
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { ClipboardList } from "lucide-react";
+import { Heart } from "lucide-react";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { FilterChipRow } from "@/components/filter-chip-row";
 import { JobCard } from "@/components/job-card";
 import { PageContent } from "@/components/layout/page-content";
 import { PageHeader } from "@/components/layout/page-header";
 import { PageLoading } from "@/components/page-loading";
+import { Button } from "@/components/ui/button";
 import { useSessionProfile } from "@/hooks/use-session-profile";
 import { useRouter } from "@/hooks/use-app-router";
 import {
@@ -144,10 +145,12 @@ function MyJobsContent() {
         title="My Gigs"
         description="Applications & selected work"
         action={
-          <ClipboardList
-            aria-hidden="true"
-            className="size-5 text-primary/40"
-          />
+          <Button variant="outline" size="sm" asChild>
+            <Link href="/freelancer/saved">
+              <Heart data-icon="inline-start" />
+              Saved
+            </Link>
+          </Button>
         }
       />
 

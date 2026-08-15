@@ -19,6 +19,7 @@ export type ChatParticipant = {
   userId: string;
   name: string;
   photoUrl: string | null;
+  phone: string | null;
   role: JobChatMembershipRole;
   isActive: boolean;
   isMe: boolean;

@@ -3,8 +3,10 @@ import {
   CheckCircle2,
   Clock,
   Megaphone,
+  Pencil,
   UserPlus,
   Wallet,
+  XCircle,
 } from "lucide-react";
 import { NotificationItem } from "@/components/notification-item";
 import { notificationHref } from "@/lib/notification-href";
@@ -76,6 +78,10 @@ function iconFor(type: string) {
     case "application_received":
     case "selection":
       return { Icon: UserPlus, className: "bg-emerald-100 text-emerald-700" };
+    case "job_updated":
+      return { Icon: Pencil, className: "bg-sky-100 text-sky-700" };
+    case "job_cancelled":
+      return { Icon: XCircle, className: "bg-red-100 text-red-600" };
     case "check_in":
     case "check_out":
       return { Icon: CheckCircle2, className: "bg-primary/15 text-primary" };

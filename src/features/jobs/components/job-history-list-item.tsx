@@ -2,12 +2,17 @@ import { ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ListItemCard } from "@/components/shared/list-item-card";
 import { JobCategoryIcon } from "@/features/jobs/components/job-category-icon";
-import { jobStatusLabel, jobStatusVariant } from "@/lib/status";
+import {
+  effectiveJobStatus,
+  jobStatusLabel,
+  jobStatusVariant,
+} from "@/lib/status";
 import { formatPay, formatTime, jobDayTotal, jobEngagementTotal } from "@/lib/utils";
 import { formatWorkDatesLabel, jobWorkDates } from "@/lib/work-dates";
 import type { Job } from "@/types/database";
 
 export function JobHistoryListItem({ job }: { job: Job }) {
+  const status = effectiveJobStatus(job);
   const dates = jobWorkDates(job);
   const payout =
     job.status === "cancelled"
@@ -21,11 +26,11 @@ export function JobHistoryListItem({ job }: { job: Job }) {
       title={job.title}
       badge={
         <Badge
-          variant={jobStatusVariant(job.status)}
+          variant={jobStatusVariant(status)}
           size="sm"
           className="shrink-0"
         >
-          {jobStatusLabel(job.status)}
+          {jobStatusLabel(status)}
         </Badge>
       }
       description={`${formatWorkDatesLabel(dates)} · ${formatTime(job.start_time)}–${formatTime(job.end_time)}`}
