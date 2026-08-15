@@ -127,11 +127,7 @@ export function LifecycleTracker({
 
       <p
         className={cn(
-          "text-[11px] font-semibold",
-          lifecycle.exception === "missed_attendance" ||
-            lifecycle.exception === "payment_dispute"
-            ? "text-amber-700"
-            : "text-muted-foreground",
+          "rounded-lg border px-2.5 py-1.5 text-xs font-semibold border-amber-200 bg-amber-50 text-amber-800",
         )}
       >
         {lifecycle.statusText}
@@ -170,10 +166,17 @@ export function LifecycleTracker({
 export function JobLifecycleSummaryBar({
   summary,
   className,
+  hideCtaHref,
 }: {
   summary: JobLifecycleSummary;
   className?: string;
+  /** Hide the CTA when it would navigate to this path (already on that page). */
+  hideCtaHref?: string;
 }) {
+  const showCta =
+    summary.cta != null &&
+    (hideCtaHref == null || summary.cta.href !== hideCtaHref);
+
   return (
     <div className={cn("space-y-2", className)}>
       <div className="grid grid-cols-4 gap-1 text-center">
@@ -207,10 +210,10 @@ export function JobLifecycleSummaryBar({
           <p className="text-[9px] font-semibold text-muted-foreground">Rated</p>
         </div>
       </div>
-      <p className="text-[11px] font-semibold text-muted-foreground">
+      <p className="rounded-lg border border-border bg-muted/50 px-2.5 py-1.5 text-xs font-semibold text-foreground/75">
         {summary.statusText}
       </p>
-      {summary.cta ? (
+      {showCta && summary.cta ? (
         <Link
           href={summary.cta.href}
           className={cn(

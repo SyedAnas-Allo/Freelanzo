@@ -3,29 +3,15 @@
 import { useState } from "react";
 import { useRouter } from "@/hooks/use-app-router";
 import { Send } from "lucide-react";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { checkJobEligibility } from "@/lib/profile-eligibility";
 import {
-  applyEligibilityErrorMessage,
-  checkJobEligibility,
-} from "@/lib/profile-eligibility";
+  ensureOnlineForMutation,
+  flashSuccess,
+  presentAppError,
+} from "@/lib/flash-message";
 import { createClient } from "@/lib/supabase/client";
 import type { Job, Profile } from "@/types/database";
-
-const OVERLAP_MESSAGE =
-  "You've already accepted another overlapping gig. Withdraw it first.";
-
-function applyErrorMessage(message: string) {
-  const eligibility = applyEligibilityErrorMessage(message);
-  if (eligibility) return eligibility;
-  if (
-    message.includes("overlaps another application") ||
-    message.includes("already accepted another overlapping job")
-  ) {
-    return OVERLAP_MESSAGE;
-  }
-  return message;
-}
 
 export function ApplyButton({
   jobId,
@@ -100,7 +86,14 @@ export function ApplyButton({
       setupHref: `/onboarding?returnTo=${encodeURIComponent(jobPath)}`,
     });
     if (!result.ok) {
-      toast.error(result.message);
+      presentAppError({
+        category: "eligibility",
+        message: result.message,
+        retryable: false,
+        action: result.fixHref
+          ? { label: "Fix profile", href: result.fixHref }
+          : undefined,
+      });
       if (result.code === "profile_incomplete" && result.fixHref) {
         router.push(result.fixHref);
       }
@@ -110,6 +103,7 @@ export function ApplyButton({
   }
 
   async function apply() {
+    if (!ensureOnlineForMutation()) return;
     setLoading(true);
     if (!(await assertEligible())) {
       setLoading(false);
@@ -122,7 +116,7 @@ export function ApplyButton({
     const user = session?.user ?? null;
     if (!user) {
       setLoading(false);
-      toast.error("Please sign in");
+      presentAppError(new Error("Not authenticated"));
       router.push("/login");
       return;
     }
@@ -135,23 +129,28 @@ export function ApplyButton({
 
     if (error) {
       setLoading(false);
-      toast.error(applyErrorMessage(error.message));
+      presentAppError(error, { op: "apply", onRetry: () => void apply() });
       return;
     }
 
     await notifyBusiness();
     setLoading(false);
-    toast.success("Application submitted!");
+    flashSuccess("Application submitted!");
     router.push(`/freelancer/jobs/${jobId}/applied`);
     router.refresh();
   }
 
   async function reapply() {
     if (!applicationId) {
-      toast.error("Application not found");
+      presentAppError({
+        category: "conflict",
+        message: "Application not found",
+        retryable: false,
+      });
       return;
     }
 
+    if (!ensureOnlineForMutation()) return;
     setLoading(true);
     if (!(await assertEligible())) {
       setLoading(false);
@@ -164,13 +163,13 @@ export function ApplyButton({
 
     if (error) {
       setLoading(false);
-      toast.error(applyErrorMessage(error.message));
+      presentAppError(error, { op: "apply", onRetry: () => void reapply() });
       return;
     }
 
     await notifyBusiness();
     setLoading(false);
-    toast.success("Application submitted!");
+    flashSuccess("Application submitted!");
     router.push(`/freelancer/jobs/${jobId}/applied`);
     router.refresh();
   }

@@ -1,6 +1,7 @@
 import type { VariantProps } from "class-variance-authority";
 import type { badgeVariants } from "@/components/ui/badge";
-import type { ApplicationStatus, JobStatus } from "@/types/database";
+import { isJobScheduleOpen, jobWorkDates } from "@/lib/work-dates";
+import type { ApplicationStatus, Job, JobStatus } from "@/types/database";
 
 export const APPLICATION_STATUSES: ApplicationStatus[] = [
   "applied",
@@ -179,6 +180,23 @@ export function jobStatusLabel(status: string): string {
 
 export function isSelectionOpen(status: JobStatus): boolean {
   return SELECTION_OPEN_STATUSES.includes(status);
+}
+
+type JobScheduleFields = Pick<
+  Job,
+  "status" | "job_date" | "work_dates" | "start_time" | "end_time"
+>;
+
+/**
+ * Status as freelancers actually experience it. A live gig whose shift has
+ * ended is no longer listed to anyone, but the row stays `live` because
+ * `private.expire_finished_jobs` has nothing scheduled to run it.
+ */
+export function effectiveJobStatus(job: JobScheduleFields): JobStatus {
+  if (job.status !== "live") return job.status;
+  return isJobScheduleOpen(jobWorkDates(job), job.start_time, job.end_time)
+    ? "live"
+    : "expired";
 }
 
 export function isActiveJob(status: JobStatus): boolean {

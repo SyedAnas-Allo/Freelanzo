@@ -3,33 +3,30 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "@/hooks/use-app-router";
-import { MapPin } from "lucide-react";
-import { toast } from "sonner";
+import { CalendarClock, MapPin } from "lucide-react";
 import { InfoCallout } from "@/components/info-callout";
 import { SwipeToConfirm } from "@/components/swipe-to-confirm";
 import { Button } from "@/components/ui/button";
 import {
-  applyEligibilityErrorMessage,
   checkJobEligibility,
   type EligibilityBlock,
 } from "@/lib/profile-eligibility";
+import {
+  ensureOnlineForMutation,
+  flashSuccess,
+  presentAppError,
+} from "@/lib/flash-message";
+import {
+  canApplyOrReapply,
+  resolveJobFooterAction,
+} from "@/lib/job-footer-action";
 import { createClient } from "@/lib/supabase/client";
-import type { Job, Profile } from "@/types/database";
-
-const OVERLAP_MESSAGE =
-  "You've already accepted another overlapping gig. Withdraw it first.";
-
-function applyErrorMessage(message: string) {
-  const eligibility = applyEligibilityErrorMessage(message);
-  if (eligibility) return eligibility;
-  if (
-    message.includes("overlaps another application") ||
-    message.includes("already accepted another overlapping job")
-  ) {
-    return OVERLAP_MESSAGE;
-  }
-  return message;
-}
+import {
+  daysBetweenISO,
+  formatWorkDateShort,
+  localDateISO,
+} from "@/lib/work-dates";
+import type { ApplicationStatus, Job, Profile } from "@/types/database";
 
 type FooterCta = {
   label: string;
@@ -42,10 +39,10 @@ export function JobDetailFooter({
   hired,
   jobId,
   applicationId,
-  alreadyApplied,
   applicationStatus,
   closed,
   mapsUrl,
+  scheduledCheckInDate,
   eligibilityBlock,
   jobRequirements,
 }: {
@@ -53,10 +50,10 @@ export function JobDetailFooter({
   hired: boolean;
   jobId: string;
   applicationId?: string | null;
-  alreadyApplied: boolean;
-  applicationStatus?: "applied" | "accepted" | "rejected" | "cancelled" | null;
+  applicationStatus?: ApplicationStatus | null;
   closed: boolean;
   mapsUrl: string;
+  scheduledCheckInDate?: string | null;
   eligibilityBlock?: EligibilityBlock | null;
   jobRequirements?: Pick<Job, "gender_preference" | "skilled">;
 }) {
@@ -125,11 +122,19 @@ export function JobDetailFooter({
   }
 
   async function apply() {
+    if (!ensureOnlineForMutation()) return;
     setLoading(true);
     const block = await loadEligibility();
     if (block) {
       setLoading(false);
-      toast.error(block.message);
+      presentAppError({
+        category: "eligibility",
+        message: block.message,
+        retryable: false,
+        action: block.fixHref
+          ? { label: "Fix profile", href: block.fixHref }
+          : undefined,
+      });
       if (block.code === "profile_incomplete" && block.fixHref) {
         router.push(block.fixHref);
       }
@@ -143,7 +148,7 @@ export function JobDetailFooter({
     const user = session?.user ?? null;
     if (!user) {
       setLoading(false);
-      toast.error("Please sign in");
+      presentAppError(new Error("Not authenticated"));
       router.push("/login");
       return;
     }
@@ -156,28 +161,40 @@ export function JobDetailFooter({
 
     if (error) {
       setLoading(false);
-      toast.error(applyErrorMessage(error.message));
+      presentAppError(error, { op: "apply", onRetry: () => void apply() });
       return;
     }
 
     await notifyBusiness();
     setLoading(false);
-    toast.success("Application submitted!");
+    flashSuccess("Application submitted!");
     router.push(`/freelancer/jobs/${jobId}/applied`);
     router.refresh();
   }
 
   async function reapply() {
     if (!applicationId) {
-      toast.error("Application not found");
+      presentAppError({
+        category: "conflict",
+        message: "Application not found",
+        retryable: false,
+      });
       return;
     }
 
+    if (!ensureOnlineForMutation()) return;
     setLoading(true);
     const block = await loadEligibility();
     if (block) {
       setLoading(false);
-      toast.error(block.message);
+      presentAppError({
+        category: "eligibility",
+        message: block.message,
+        retryable: false,
+        action: block.fixHref
+          ? { label: "Fix profile", href: block.fixHref }
+          : undefined,
+      });
       if (block.code === "profile_incomplete" && block.fixHref) {
         router.push(block.fixHref);
       }
@@ -191,78 +208,73 @@ export function JobDetailFooter({
 
     if (error) {
       setLoading(false);
-      toast.error(applyErrorMessage(error.message));
+      presentAppError(error, { op: "apply", onRetry: () => void reapply() });
       return;
     }
 
     await notifyBusiness();
     setLoading(false);
-    toast.success("Application submitted!");
+    flashSuccess("Application submitted!");
     router.push(`/freelancer/jobs/${jobId}/applied`);
     router.refresh();
   }
 
-  let label = "Apply Now";
-  let disabled = false;
+  const action = resolveJobFooterAction({
+    applicationStatus,
+    lifecycleCta: footerCta,
+    closed,
+    eligibilityBlock,
+  });
+
+  if (scheduledCheckInDate) {
+    const daysUntilCheckIn = Math.max(
+      0,
+      daysBetweenISO(localDateISO(), scheduledCheckInDate),
+    );
+    const scheduledLabel =
+      daysUntilCheckIn === 0
+        ? "Check-in is today"
+        : `Check-in in ${daysUntilCheckIn} ${daysUntilCheckIn === 1 ? "day" : "days"}`;
+
+    return (
+      <div className="fixed inset-x-0 bottom-0 z-20 mx-auto max-w-[430px] border-t border-border/50 bg-background/95 px-4 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur">
+        <Button
+          type="button"
+          disabled
+          className="h-11 w-full rounded-full border border-amber-300 bg-amber-100 text-sm font-bold text-amber-950 shadow-none disabled:opacity-100 dark:border-amber-700 dark:bg-amber-900/60 dark:text-amber-100"
+        >
+          <CalendarClock className="size-4" />
+          {scheduledLabel} · {formatWorkDateShort(scheduledCheckInDate)}
+        </Button>
+      </div>
+    );
+  }
+
+  if (action.kind === "hidden") return null;
+
+  const label = action.label;
+  const disabled = action.kind === "blocked";
   let onConfirm: (() => void) | undefined;
 
-  if (
-    footerCta &&
-    (footerCta.kind === "primary" || footerCta.kind === "secondary")
-  ) {
-    label = footerCta.label;
-    onConfirm = () => router.push(footerCta.href);
-  } else if (applicationStatus === "cancelled") {
-    if (closed) {
-      label = "Applications Closed";
-      disabled = true;
-    } else if (eligibilityBlock) {
-      if (
-        eligibilityBlock.code === "profile_incomplete" &&
-        eligibilityBlock.fixHref
-      ) {
-        label = "Set Up Profile";
-        onConfirm = () => router.push(eligibilityBlock.fixHref!);
-      } else {
-        label = "Can't Apply";
-        disabled = true;
-      }
-    } else {
-      label = "Apply Again";
-      onConfirm = () => {
-        void reapply();
-      };
-    }
-  } else if (alreadyApplied) {
-    // Applied / rejected / selected waiting states — status lives in the
-    // lifecycle tracker; do not render a fake disabled swipe CTA.
-    return null;
-  } else if (closed) {
-    label = "Applications Closed";
-    disabled = true;
-  } else if (eligibilityBlock) {
-    if (eligibilityBlock.code === "profile_incomplete" && eligibilityBlock.fixHref) {
-      label = "Set Up Profile";
-      onConfirm = () => router.push(eligibilityBlock.fixHref!);
-    } else {
-      label = "Can't Apply";
-      disabled = true;
-    }
-  } else {
+  if (action.kind === "navigate" || action.kind === "fix_profile") {
+    onConfirm = () => router.push(action.href);
+  } else if (action.kind === "apply") {
     onConfirm = () => {
       void apply();
+    };
+  } else if (action.kind === "reapply") {
+    onConfirm = () => {
+      void reapply();
     };
   }
 
   const showGoToLocation =
     hired &&
-    footerCta?.kind === "primary" &&
-    footerCta.href.includes("/check-in");
+    action.kind === "navigate" &&
+    action.href.includes("/check-in");
 
   const showEligibility =
-    !!eligibilityBlock &&
-    (!alreadyApplied || applicationStatus === "cancelled") &&
-    !footerCta;
+    !!eligibilityBlock && canApplyOrReapply(applicationStatus);
 
   return (
     <div className="fixed inset-x-0 bottom-0 z-20 mx-auto max-w-[430px] border-t border-border/50 bg-background/95 px-4 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur">

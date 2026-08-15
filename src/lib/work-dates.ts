@@ -76,6 +76,45 @@ export function toggleWorkDay(
   return { dates: next };
 }
 
+function hoursAndMinutes(time: string): [number, number] {
+  const [hours = 0, minutes = 0] = time.split(":").map(Number);
+  return [hours, minutes];
+}
+
+/**
+ * When applications close: the end of the shift on the last work day.
+ * Mirrors `private.job_application_deadline` — an end time at or before the
+ * start time means the shift runs past midnight into the next day.
+ */
+export function jobApplicationDeadline(
+  workDates: string[],
+  startTime: string,
+  endTime: string,
+): Date {
+  const sorted = [...workDates].sort();
+  const lastDay = sorted[sorted.length - 1] ?? localDateISO();
+  const overnight = endTime.slice(0, 5) <= startTime.slice(0, 5);
+  const deadline = parseLocalDate(overnight ? addDaysISO(lastDay, 1) : lastDay);
+  const [hours, minutes] = hoursAndMinutes(endTime);
+  deadline.setHours(hours, minutes, 0, 0);
+  return deadline;
+}
+
+/**
+ * True while a gig can still be listed to freelancers. Once the shift has
+ * ended, `available_job_ids` stops returning the gig and it disappears from
+ * the freelancer feed, so posting one is pointless.
+ */
+export function isJobScheduleOpen(
+  workDates: string[],
+  startTime: string,
+  endTime: string,
+  now = new Date(),
+): boolean {
+  if (workDates.length === 0) return false;
+  return now < jobApplicationDeadline(workDates, startTime, endTime);
+}
+
 /** Prefer today if it's a work day; else next upcoming; else last. */
 export function pickAttendanceDay(
   workDates: string[],

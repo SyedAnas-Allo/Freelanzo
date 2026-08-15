@@ -13,7 +13,6 @@ import {
   Shirt,
   UtensilsCrossed,
   Users,
-  VenusAndMars,
 } from "lucide-react";
 import { ContactActionBar } from "@/components/actions/contact-action-bar";
 import { ApplicationActionsMenu } from "@/components/application-actions-menu";
@@ -29,18 +28,20 @@ import { PageBack } from "@/components/page-back";
 import { PageLoading } from "@/components/page-loading";
 import { PaymentResponsibilityCallout } from "@/components/payment-responsibility-callout";
 import { ReferJobButton } from "@/components/refer-button";
+import { SaveJobButton } from "@/components/save-job-button";
 import { shiftLabel } from "@/components/shift-timeline";
 import { SosCallout } from "@/components/sos-callout";
 import { MetaPill } from "@/components/ui/meta-pill";
 import { JobCategoryIcon } from "@/features/jobs/components/job-category-icon";
-import { formatJobDateRelative } from "@/features/jobs/formatters/job-date";
+import { formatJobDateRelative, jobTimingTag } from "@/features/jobs/formatters/job-date";
 import {
   deriveApplicationLifecycle,
   type ApplicationLifecycle,
 } from "@/lib/application-lifecycle";
 import { useRouter } from "@/hooks/use-app-router";
 import { fetchSessionProfile } from "@/hooks/use-session-profile";
-import { loadAttendanceRecordsForApplication } from "@/lib/load-attendance-records";
+import { loadAttendanceBundleForApplication } from "@/lib/load-attendance-records";
+import { canApplyOrReapply } from "@/lib/job-footer-action";
 import { checkJobEligibility } from "@/lib/profile-eligibility";
 import { createClient } from "@/lib/supabase/client";
 import { isHiredStatus, isJobPhoneUnlocked } from "@/lib/status";
@@ -128,6 +129,7 @@ type PageData = {
   userId: string;
   job: JobWithBusiness;
   application: Application | null;
+  saved: boolean;
   acceptedCount: number;
   acceptingApplications: boolean;
   jobsPostedCount: number;
@@ -142,6 +144,9 @@ export default function JobDetailPage() {
   const [loading, setLoading] = useState(true);
   const [notFoundState, setNotFoundState] = useState(false);
   const [data, setData] = useState<PageData | null>(null);
+  // This screen loads its own data on the client, so router.refresh() cannot
+  // pick up a withdrawal. Bumping this re-runs the loader.
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     async function load() {
@@ -152,11 +157,37 @@ export default function JobDetailPage() {
       }
 
       const supabase = createClient();
-      const { data: job } = await supabase
-        .from("jobs")
-        .select("*, business_profiles(*)")
-        .eq("id", id)
-        .maybeSingle();
+      const [
+        { data: job },
+        { data: application },
+        { data: savedJob },
+        { count: acceptedCount },
+        { data: availableRows },
+      ] = await Promise.all([
+        supabase
+          .from("jobs")
+          .select("*, business_profiles(*)")
+          .eq("id", id)
+          .maybeSingle(),
+        supabase
+          .from("applications")
+          .select("*")
+          .eq("job_id", id)
+          .eq("freelancer_id", session.user.id)
+          .maybeSingle(),
+        supabase
+          .from("saved_jobs")
+          .select("job_id")
+          .eq("job_id", id)
+          .eq("freelancer_id", session.user.id)
+          .maybeSingle(),
+        supabase
+          .from("applications")
+          .select("*", { count: "exact", head: true })
+          .eq("job_id", id)
+          .eq("status", "accepted"),
+        supabase.rpc("available_job_ids", { p_job_id: id }),
+      ]);
 
       if (!job) {
         setNotFoundState(true);
@@ -165,30 +196,11 @@ export default function JobDetailPage() {
       }
 
       const typedJob = job as JobWithBusiness;
-
-      const { data: application } = await supabase
-        .from("applications")
-        .select("*")
-        .eq("job_id", id)
-        .eq("freelancer_id", session.user.id)
-        .maybeSingle();
-
       const typedApp = application as Application | null;
       const hired = typedApp ? isHiredStatus(typedApp.status) : false;
-
-      const [{ count: acceptedCount }, { data: availableRows }] =
-        await Promise.all([
-          supabase
-            .from("applications")
-            .select("*", { count: "exact", head: true })
-            .eq("job_id", id)
-            .eq("status", "accepted"),
-          supabase.rpc("available_job_ids", { p_job_id: id }),
-        ]);
       const acceptingApplications =
         ((availableRows ?? []) as { job_id: string }[]).length > 0;
-
-      const { count: jobsPostedCount } = await supabase
+      const jobsPostedCountPromise = supabase
         .from("jobs")
         .select("*", { count: "exact", head: true })
         .eq("business_id", typedJob.business_id);
@@ -198,21 +210,30 @@ export default function JobDetailPage() {
       let attendanceRecords: AttendanceRecordView[] = [];
 
       if (typedApp) {
-        const { data: events } = await supabase
-          .from("attendance_events")
-          .select("kind, work_date")
-          .eq("application_id", typedApp.id);
-        const { data: pay } = await supabase
-          .from("payments")
-          .select("status, business_claimed, freelancer_claimed")
-          .eq("application_id", typedApp.id)
-          .maybeSingle();
-        const { data: rating } = await supabase
-          .from("ratings")
-          .select("id")
-          .eq("application_id", typedApp.id)
-          .eq("from_user_id", session.user.id)
-          .maybeSingle();
+        const [{ data: pay }, { data: rating }, attendance, { data: ownerProfile }] =
+          await Promise.all([
+            supabase
+              .from("payments")
+              .select("status, business_claimed, freelancer_claimed")
+              .eq("application_id", typedApp.id)
+              .maybeSingle(),
+            supabase
+              .from("ratings")
+              .select("id")
+              .eq("application_id", typedApp.id)
+              .eq("from_user_id", session.user.id)
+              .maybeSingle(),
+            loadAttendanceBundleForApplication(supabase, typedApp.id, {
+              includeRecords: hired,
+            }),
+            hired && isJobPhoneUnlocked(typedJob.status)
+              ? supabase
+                  .from("profiles")
+                  .select("phone")
+                  .eq("id", typedJob.business_profiles.owner_id)
+                  .maybeSingle()
+              : Promise.resolve({ data: null }),
+          ]);
 
         lifecycle = deriveApplicationLifecycle({
           applicationId: typedApp.id,
@@ -220,7 +241,7 @@ export default function JobDetailPage() {
           applicationStatus: typedApp.status,
           jobStatus: typedJob.status,
           workDates: jobWorkDates(typedJob),
-          events: events ?? [],
+          events: attendance.events,
           paymentStatus:
             (pay?.status as "pending" | "confirmed" | "dispute") ?? null,
           businessClaimed: !!pay?.business_claimed,
@@ -232,33 +253,18 @@ export default function JobDetailPage() {
         });
 
         if (hired) {
-          attendanceRecords = await loadAttendanceRecordsForApplication(
-            supabase,
-            typedApp.id,
-          );
-          if (isJobPhoneUnlocked(typedJob.status)) {
-            const { data: owner } = await supabase
-              .from("business_profiles")
-              .select("owner_id")
-              .eq("id", typedJob.business_id)
-              .maybeSingle();
-            if (owner) {
-              const { data: op } = await supabase
-                .from("profiles")
-                .select("phone")
-                .eq("id", owner.owner_id)
-                .maybeSingle();
-              businessPhone = op?.phone ?? null;
-            }
-          }
+          attendanceRecords = attendance.records;
+          businessPhone = ownerProfile?.phone ?? null;
         }
       }
 
+      const { count: jobsPostedCount } = await jobsPostedCountPromise;
       setData({
         profile: session.profile,
         userId: session.user.id,
         job: typedJob,
         application: typedApp,
+        saved: !!savedJob,
         acceptedCount: acceptedCount ?? 0,
         acceptingApplications,
         jobsPostedCount: jobsPostedCount ?? 0,
@@ -269,7 +275,7 @@ export default function JobDetailPage() {
       setLoading(false);
     }
     void load();
-  }, [id, router]);
+  }, [id, router, reloadKey]);
 
   if (loading) return <PageLoading />;
   if (notFoundState || !data) {
@@ -282,8 +288,10 @@ export default function JobDetailPage() {
 
   const {
     profile,
+    userId,
     job: typedJob,
     application: typedApp,
+    saved,
     acceptedCount,
     acceptingApplications,
     jobsPostedCount,
@@ -317,6 +325,7 @@ export default function JobDetailPage() {
   const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${typedJob.lat},${typedJob.lng}`;
   const dates = jobWorkDates(typedJob);
   const multiDay = dates.length > 1;
+  const timingTag = jobTimingTag(dates);
 
   const detailRows = [
     {
@@ -328,16 +337,6 @@ export default function JobDetailPage() {
       icon: Briefcase,
       label: "Accepted",
       value: `${acceptedCount}/${typedJob.headcount}`,
-    },
-    {
-      icon: VenusAndMars,
-      label: "Gender preference",
-      value:
-        typedJob.gender_preference === "any"
-          ? "Any gender"
-          : typedJob.gender_preference === "male"
-            ? "Male"
-            : "Female",
     },
     ...(typedJob.dress_code
       ? [
@@ -367,6 +366,13 @@ export default function JobDetailPage() {
   ];
 
   const rawCta = lifecycle?.cta ?? null;
+  const scheduledCheckInDate =
+    hired &&
+    !lifecycle?.attendanceComplete &&
+    lifecycle?.attendance.actionable === null
+      ? (lifecycle.attendance.days.find((day) => day.phase === "scheduled")
+          ?.date ?? null)
+      : null;
   const footerCta =
     !rawCta ||
     rawCta.kind === "waiting" ||
@@ -380,8 +386,8 @@ export default function JobDetailPage() {
     !!typedApp &&
     (typedApp.status === "applied" || typedApp.status === "accepted") &&
     !!typedJob.business_profiles.owner_id;
-  const canApplyOrReapply = !typedApp || typedApp.status === "cancelled";
-  const showFooter = canApplyOrReapply || !!footerCta;
+  const canApply = canApplyOrReapply(typedApp?.status);
+  const showFooter = canApply || !!footerCta || !!scheduledCheckInDate;
 
   const editProfileHref = `/profile/edit?returnTo=${encodeURIComponent(`/freelancer/jobs/${typedJob.id}`)}`;
   const setupHref = `/onboarding?returnTo=${encodeURIComponent(`/freelancer/jobs/${typedJob.id}`)}`;
@@ -391,7 +397,7 @@ export default function JobDetailPage() {
   const eligibilityBlock = eligibility.ok ? null : eligibility;
 
   const footerPadClass =
-    eligibilityBlock && canApplyOrReapply
+    eligibilityBlock && canApply
       ? "pb-[calc(14rem+env(safe-area-inset-bottom,0px))]"
       : showFooter
         ? "pb-[calc(6.25rem+env(safe-area-inset-bottom,0px))]"
@@ -401,7 +407,15 @@ export default function JobDetailPage() {
     <div className={cn("px-4 pt-1", footerPadClass)}>
       <div className="mb-2 flex items-center justify-between gap-2">
         <PageBack href="/freelancer" />
-        <ReferJobButton jobId={typedJob.id} jobTitle={typedJob.title} />
+        <div className="flex items-center gap-1">
+          <SaveJobButton
+            jobId={typedJob.id}
+            userId={userId}
+            initialSaved={saved}
+            className="shadow-none"
+          />
+          <ReferJobButton jobId={typedJob.id} jobTitle={typedJob.title} />
+        </div>
       </div>
       <div className="flex items-start gap-3">
         <JobCategoryIcon
@@ -503,11 +517,27 @@ export default function JobDetailPage() {
       </div>
 
       <div className="mt-2.5 flex flex-wrap gap-1.5">
+        {timingTag ? (
+          <MetaPill
+            tone="amber"
+            className="h-5 px-2 text-[11px]"
+            suppressHydrationWarning
+          >
+            {timingTag}
+          </MetaPill>
+        ) : null}
         <MetaPill tone="violet" className="h-5 px-2 text-[11px]">
           {typedJob.skilled ? "Skilled" : "Unskilled"}
         </MetaPill>
         <MetaPill tone="violet" className="h-5 px-2 text-[11px]">
           {shiftLabel(typedJob.start_time)} Shift
+        </MetaPill>
+        <MetaPill tone="violet" className="h-5 px-2 text-[11px]">
+          {typedJob.gender_preference === "any"
+            ? "Any gender"
+            : typedJob.gender_preference === "male"
+              ? "Male"
+              : "Female"}
         </MetaPill>
       </div>
 
@@ -521,6 +551,7 @@ export default function JobDetailPage() {
               <ApplicationActionsMenu
                 applicationId={typedApp.id}
                 canWithdraw={canWithdraw}
+                onWithdrawn={() => setReloadKey((key) => key + 1)}
                 report={
                   canReportBusiness
                     ? {
@@ -557,10 +588,10 @@ export default function JobDetailPage() {
           {hired &&
           !lifecycle.attendanceComplete &&
           lifecycle.attendance.actionable?.reason === "today" ? (
-            <InfoCallout className="mt-2.5" title="OTP required">
+            <InfoCallout className="mt-2.5" title="Attendance confirmation">
               <p>
-                The business will share a 6-digit OTP on site. Enter it and
-                capture a live photo to verify attendance
+                When you are on site, capture a live photo and send an
+                attendance request. The business will confirm it
                 {multiDay ? " for that day" : ""}.
               </p>
             </InfoCallout>
@@ -726,11 +757,11 @@ export default function JobDetailPage() {
           hired={hired}
           jobId={typedJob.id}
           applicationId={typedApp?.id ?? null}
-          alreadyApplied={!!typedApp && typedApp.status !== "cancelled"}
           applicationStatus={typedApp?.status ?? null}
           closed={!acceptingApplications}
           mapsUrl={mapsUrl}
-          eligibilityBlock={canApplyOrReapply ? eligibilityBlock : null}
+          scheduledCheckInDate={scheduledCheckInDate}
+          eligibilityBlock={canApply ? eligibilityBlock : null}
           jobRequirements={{
             gender_preference: typedJob.gender_preference,
             skilled: typedJob.skilled,
