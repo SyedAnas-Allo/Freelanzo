@@ -11,7 +11,10 @@ import { shiftLabel } from "@/components/shift-timeline";
 import { Badge } from "@/components/ui/badge";
 import { MetaPill } from "@/components/ui/meta-pill";
 import { JobCategoryIcon } from "@/features/jobs/components/job-category-icon";
-import { formatJobDate } from "@/features/jobs/formatters/job-date";
+import {
+  formatJobDate,
+  jobTimingTag,
+} from "@/features/jobs/formatters/job-date";
 import type { BadgeVariant } from "@/lib/status";
 import {
   CATEGORIES,
@@ -97,6 +100,7 @@ export function JobCard({
   const multiDay = workDates.length > 1;
   const showUrgent = !statusLabel && (urgent ?? isJobUrgent(job));
   const dayCount = workDates.length;
+  const timingTag = jobTimingTag(workDates);
   const shiftName = `${shiftLabel(job.start_time)} Shift`;
   const shiftHours = `${formatTime(job.start_time)} – ${formatTime(job.end_time)}`;
 
@@ -211,11 +215,27 @@ export function JobCard({
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5">
+        {timingTag ? (
+          <MetaPill
+            tone="amber"
+            className="h-5 px-2 text-[11px]"
+            suppressHydrationWarning
+          >
+            {timingTag}
+          </MetaPill>
+        ) : null}
         <MetaPill tone="violet" className="h-5 px-2 text-[11px]">
           {job.skilled ? "Skilled" : "Unskilled"}
         </MetaPill>
         <MetaPill tone="violet" className="h-5 px-2 text-[11px]">
           {categoryLabel(job.category)}
+        </MetaPill>
+        <MetaPill tone="violet" className="h-5 px-2 text-[11px]">
+          {job.gender_preference === "any"
+            ? "Any gender"
+            : job.gender_preference === "male"
+              ? "Male"
+              : "Female"}
         </MetaPill>
       </div>
     </div>
