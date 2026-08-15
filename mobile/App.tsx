@@ -20,6 +20,7 @@ import {
 } from "react-native-webview";
 import type { ShouldStartLoadRequest } from "react-native-webview/lib/WebViewTypes";
 import * as Linking from "expo-linking";
+import * as Haptics from "expo-haptics";
 import * as WebBrowser from "expo-web-browser";
 import { APP_USER_AGENT_TOKEN, BRAND, WEB_URL } from "./src/config";
 import { NetworkErrorScreen } from "./src/NetworkErrorScreen";
@@ -133,6 +134,9 @@ export default function App() {
         window.__FREELANZO_NATIVE__ = true;
         window.__FREELANZO_NATIVE_SHARE__ = true;
         window.__FREELANZO_OAUTH_REDIRECT__ = ${redirect};
+        if (document.documentElement) {
+          document.documentElement.dataset.nativeApp = 'true';
+        }
         if (!window.__FREELANZO_LINK_HOOK__) {
           window.__FREELANZO_LINK_HOOK__ = true;
           function postOpen(url) {
@@ -140,8 +144,17 @@ export default function App() {
               window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'OPEN_URL', url: url }));
             }
           }
+          function postHaptic() {
+            if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+              window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'HAPTIC_SELECTION' }));
+            }
+          }
           document.addEventListener('click', function (e) {
             var el = e.target;
+            var action = el && el.closest ? el.closest('[data-native-haptic="selection"]') : null;
+            if (action && !action.hasAttribute('disabled') && action.getAttribute('aria-disabled') !== 'true') {
+              postHaptic();
+            }
             while (el && el.tagName !== 'A') el = el.parentElement;
             if (!el || !el.href) return;
             var href = el.href;
@@ -422,6 +435,10 @@ export default function App() {
         void shareFromWeb(data);
         return;
       }
+      if (data.type === "HAPTIC_SELECTION") {
+        void Haptics.selectionAsync().catch(() => undefined);
+        return;
+      }
       // Dialer / mail / maps / sms from web — more reliable than WebView navigation.
       if (data.type === "OPEN_URL" && data.url) {
         void openExternalScheme(data.url);
@@ -538,6 +555,11 @@ export default function App() {
                 setPageLoading(false);
                 dismissSplash();
               }}
+              directionalLockEnabled
+              nestedScrollEnabled
+              overScrollMode="never"
+              showsHorizontalScrollIndicator={false}
+              showsVerticalScrollIndicator={false}
               pullToRefreshEnabled={false}
             />
 
