@@ -1,4 +1,5 @@
 import type { AppFeedback, AppFeedbackCategory } from "@/types/database";
+import { classifyAppError } from "@/lib/app-errors";
 
 export type FeedbackCategoryOption = {
   key: AppFeedbackCategory;
@@ -75,7 +76,10 @@ export async function submitAppFeedback(
   });
 
   if (error) {
-    return { ok: false, message: error.message };
+    return {
+      ok: false,
+      message: classifyAppError(error).message,
+    };
   }
   if (!data) {
     return { ok: false, message: "Could not submit feedback" };
