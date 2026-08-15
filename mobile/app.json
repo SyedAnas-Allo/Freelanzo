@@ -8,11 +8,6 @@
     "scheme": "freelanzo",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
-    "splash": {
-      "image": "./assets/splash.jpeg",
-      "resizeMode": "contain",
-      "backgroundColor": "#FFFFFF"
-    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "co.id.freelanzo.app",
@@ -72,6 +67,19 @@
     "owner": "faiqh",
     "plugins": [
       "expo-web-browser",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 288,
+          "resizeMode": "contain",
+          "backgroundColor": "#F8F2FF",
+          "dark": {
+            "image": "./assets/splash-icon.png",
+            "backgroundColor": "#F8F2FF"
+          }
+        }
+      ],
       [
         "expo-camera",
         {

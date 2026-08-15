@@ -1,4 +1,5 @@
 import { Image, StyleSheet, View } from "react-native";
+import splashImage from "../assets/splash.jpeg";
 
 /**
  * Full-bleed marketing splash. Uses contain so the full poster (logo →
@@ -9,9 +10,10 @@ export function SplashScreen() {
   return (
     <View style={styles.root} pointerEvents="none">
       <Image
-        source={require("../assets/splash.jpeg")}
+        source={splashImage}
         style={styles.image}
         resizeMode="contain"
+        alt="Freelanzo"
         accessibilityLabel="Freelanzo"
       />
     </View>
