@@ -17,7 +17,11 @@ import { useSessionProfile } from "@/hooks/use-session-profile";
 import { useRouter } from "@/hooks/use-app-router";
 import { loadApplicationLifecycles } from "@/lib/load-application-lifecycles";
 import { createClient } from "@/lib/supabase/client";
-import { jobStatusLabel, jobStatusVariant } from "@/lib/status";
+import {
+  effectiveJobStatus,
+  jobStatusLabel,
+  jobStatusVariant,
+} from "@/lib/status";
 import type { ApplicationStatus, Job } from "@/types/database";
 
 type AppRow = {
@@ -145,6 +149,7 @@ function BusinessJobsContent() {
     return <PageLoading />;
   }
 
+  const statusOf = (job: Job) => effectiveJobStatus(job);
   const filtered =
     tab === "all"
       ? list
@@ -155,11 +160,11 @@ function BusinessJobsContent() {
               "fully_staffed",
               "confirmed",
               "in_progress",
-            ].includes(j.status),
+            ].includes(statusOf(j)),
           )
         : tab === "completed"
-          ? list.filter((j) => j.status === "completed")
-          : list.filter((j) => j.status === tab);
+          ? list.filter((j) => statusOf(j) === "completed")
+          : list.filter((j) => statusOf(j) === tab);
 
   return (
     <div className="px-4">
@@ -215,8 +220,8 @@ function BusinessJobsContent() {
               <JobCard
                 key={job.id}
                 job={job}
-                statusLabel={jobStatusLabel(job.status)}
-                statusVariant={jobStatusVariant(job.status)}
+                statusLabel={jobStatusLabel(statusOf(job))}
+                statusVariant={jobStatusVariant(statusOf(job))}
                 href={`/business/jobs/${job.id}/applicants`}
                 footer={<JobLifecycleSummaryBar summary={summary} />}
               />

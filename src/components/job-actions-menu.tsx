@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "@/hooks/use-app-router";
-import { CircleAlert, MoreVertical, XCircle } from "lucide-react";
+import { CircleAlert, MoreVertical, Pencil, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,7 +22,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { createClient } from "@/lib/supabase/client";
 
-export function JobActionsMenu({ jobId }: { jobId: string }) {
+export function JobActionsMenu({
+  jobId,
+  canEdit = true,
+}: {
+  jobId: string;
+  canEdit?: boolean;
+}) {
   const router = useRouter();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -63,6 +70,19 @@ export function JobActionsMenu({ jobId }: { jobId: string }) {
           sideOffset={6}
           className="min-w-56 rounded-xl p-1.5 shadow-lg ring-1 ring-border/60"
         >
+          {canEdit ? (
+            <DropdownMenuItem
+              className="gap-2.5 rounded-lg px-2.5 py-2.5 text-[13px] font-semibold whitespace-nowrap"
+              asChild
+            >
+              <Link href={`/business/jobs/${jobId}/edit`}>
+                <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                  <Pencil className="size-3.5" />
+                </span>
+                Edit gig
+              </Link>
+            </DropdownMenuItem>
+          ) : null}
           <DropdownMenuItem
             variant="destructive"
             className="gap-2.5 rounded-lg px-2.5 py-2.5 text-[13px] font-semibold whitespace-nowrap"

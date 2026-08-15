@@ -13,7 +13,7 @@ import { JobHistoryListItem } from "@/features/jobs/components/job-history-list-
 import { useSessionProfile } from "@/hooks/use-session-profile";
 import { useRouter } from "@/hooks/use-app-router";
 import { createClient } from "@/lib/supabase/client";
-import { isActiveJob } from "@/lib/status";
+import { effectiveJobStatus, isActiveJob } from "@/lib/status";
 import type { Job } from "@/types/database";
 
 export default function JobHistoryPage() {
@@ -82,14 +82,15 @@ function JobHistoryContent() {
   }
 
   let list = allJobs;
+  const isActive = (job: Job) => isActiveJob(effectiveJobStatus(job));
   const counts = {
-    active: list.filter((job) => isActiveJob(job.status)).length,
+    active: list.filter(isActive).length,
     completed: list.filter((j) => j.status === "completed").length,
     cancelled: list.filter((j) => j.status === "cancelled").length,
   };
 
   if (tab === "active") {
-    list = list.filter((job) => isActiveJob(job.status));
+    list = list.filter(isActive);
   } else if (tab === "completed") {
     list = list.filter((j) => j.status === "completed");
   } else if (tab === "cancelled") {
