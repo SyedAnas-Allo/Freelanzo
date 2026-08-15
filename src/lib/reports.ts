@@ -1,3 +1,5 @@
+import { classifyAppError } from "@/lib/app-errors";
+
 export type ReportDirection =
   | "freelancer_to_business"
   | "business_to_freelancer";
@@ -120,7 +122,11 @@ export async function submitReport(
   });
 
   if (existingError) {
-    return { ok: false, duplicate: false, message: existingError.message };
+    return {
+      ok: false,
+      duplicate: false,
+      message: classifyAppError(existingError).message,
+    };
   }
   if (existing) {
     return { ok: false, duplicate: true };
@@ -136,7 +142,11 @@ export async function submitReport(
   });
 
   if (error) {
-    return { ok: false, duplicate: false, message: error.message };
+    return {
+      ok: false,
+      duplicate: false,
+      message: classifyAppError(error).message,
+    };
   }
 
   return { ok: true };

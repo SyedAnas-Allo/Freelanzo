@@ -7,7 +7,6 @@ import {
   Home,
   MessageSquare,
   Plus,
-  Search,
   User,
   Wallet,
 } from "lucide-react";
@@ -45,70 +44,70 @@ export function BottomNav({
   const items: NavItem[] =
     mode === "business"
       ? [
-          {
-            href: "/business",
-            label: "Home",
-            icon: Home,
-            match: (p) => p === "/business",
-          },
-          {
-            href: "/business/jobs",
-            label: "Gigs",
-            icon: Briefcase,
-            match: (p) =>
-              p.startsWith("/business/jobs") &&
-              !p.includes("/business/jobs/new"),
-          },
-          {
-            href: "/business/jobs/new",
-            label: "Hire",
-            icon: Plus,
-            match: (p) => p.startsWith("/business/jobs/new"),
-          },
-          {
-            href: "/messages",
-            label: "Messages",
-            icon: MessageSquare,
-            badge: unread,
-          },
-          {
-            href: "/profile",
-            label: "Profile",
-            icon: User,
-          },
-        ]
+        {
+          href: "/business",
+          label: "Home",
+          icon: Home,
+          match: (p) => p === "/business",
+        },
+        {
+          href: "/business/jobs",
+          label: "Gigs",
+          icon: Briefcase,
+          match: (p) =>
+            p.startsWith("/business/jobs") &&
+            !p.includes("/business/jobs/new"),
+        },
+        {
+          href: "/business/jobs/new",
+          label: "Hire",
+          icon: Plus,
+          match: (p) => p.startsWith("/business/jobs/new"),
+        },
+        {
+          href: "/messages",
+          label: "Messages",
+          icon: MessageSquare,
+          badge: unread,
+        },
+        {
+          href: "/profile",
+          label: "Profile",
+          icon: User,
+        },
+      ]
       : [
-          {
-            href: "/freelancer/my-jobs",
-            label: "My Gigs",
-            icon: Briefcase,
-            match: (p) => p.startsWith("/freelancer/my-jobs"),
-          },
-          {
-            href: "/messages",
-            label: "Messages",
-            icon: MessageSquare,
-            badge: unread,
-          },
-          {
-            href: "/freelancer",
-            label: "Find",
-            icon: Search,
-            match: (p) =>
-              p === "/freelancer" || p.startsWith("/freelancer/jobs/"),
-          },
-          {
-            href: "/freelancer/earnings",
-            label: "Earnings",
-            icon: Wallet,
-            match: (p) => p.startsWith("/freelancer/earnings"),
-          },
-          {
-            href: "/profile",
-            label: "Profile",
-            icon: User,
-          },
-        ];
+        {
+          href: "/freelancer",
+          label: "Home",
+          icon: Home,
+          match: (p) =>
+            p === "/freelancer" || p.startsWith("/freelancer/jobs/"),
+        },
+        {
+          href: "/freelancer/my-jobs",
+          label: "My Gigs",
+          icon: Briefcase,
+          match: (p) => p.startsWith("/freelancer/my-jobs"),
+        },
+        {
+          href: "/messages",
+          label: "Messages",
+          icon: MessageSquare,
+          badge: unread,
+        },
+        {
+          href: "/freelancer/earnings",
+          label: "Earnings",
+          icon: Wallet,
+          match: (p) => p.startsWith("/freelancer/earnings"),
+        },
+        {
+          href: "/profile",
+          label: "Profile",
+          icon: User,
+        },
+      ];
 
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 mx-auto max-w-[430px] border-t bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md">
@@ -117,7 +116,7 @@ export function BottomNav({
           const active = item.match
             ? item.match(pathname)
             : pathname.startsWith(item.href);
-          const isFab = index === 2;
+          const isFab = mode === "business" && index === 2;
           const Icon = item.icon;
 
           if (isFab) {

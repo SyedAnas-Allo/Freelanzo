@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -11,6 +10,13 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  ensureOnlineForMutation,
+  flashInfo,
+  flashSuccess,
+  flashValidation,
+  presentAppError,
+} from "@/lib/flash-message";
 import {
   createSupabaseReportsStore,
   reasonRequiresDetails,
@@ -53,13 +59,14 @@ export function ReportSheet({
 
   function submit() {
     if (!reason) {
-      toast.error("Pick a reason");
+      flashValidation("Pick a reason");
       return;
     }
     if (reasonRequiresDetails(reason) && !details.trim()) {
-      toast.error("Please add a short note");
+      flashValidation("Please add a short note");
       return;
     }
+    if (!ensureOnlineForMutation()) return;
 
     startTransition(async () => {
       const supabase = createClient();
@@ -68,7 +75,7 @@ export function ReportSheet({
       } = await supabase.auth.getSession();
       const user = session?.user ?? null;
       if (!user) {
-        toast.error("Sign in to submit a report");
+        presentAppError(new Error("Not authenticated"));
         return;
       }
 
@@ -83,15 +90,17 @@ export function ReportSheet({
 
       if (!result.ok) {
         if (result.duplicate) {
-          toast.message("You've already reported this");
+          flashInfo("You've already reported this");
           handleOpenChange(false);
           return;
         }
-        toast.error(result.message);
+        presentAppError(result.message, {
+          onRetry: () => submit(),
+        });
         return;
       }
 
-      toast.success("Report submitted. We'll review it.");
+      flashSuccess("Report submitted. We'll review it.");
       handleOpenChange(false);
     });
   }
