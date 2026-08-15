@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 
 const DEFAULT_GEOCODER_URL = "https://nominatim.openstreetmap.org";
+/** Freelanzo operates in India — bias Nominatim search away from US/global matches. */
+const DEFAULT_COUNTRY_CODES = "in";
 const CACHE_SECONDS = 60 * 60 * 24 * 30;
 
 type NominatimAddress = Record<string, string | undefined>;
@@ -81,7 +83,8 @@ async function queryNominatim(url: URL, request: Request) {
   const response = await fetch(url, {
     headers: {
       Accept: "application/json",
-      "Accept-Language": request.headers.get("accept-language") || "en",
+      "Accept-Language":
+        request.headers.get("accept-language") || "en-IN,en",
       "User-Agent":
         process.env.NOMINATIM_USER_AGENT ||
         `Freelanzo/0.1 (location picker; ${origin})`,
@@ -125,6 +128,10 @@ export async function GET(request: Request) {
     upstream.searchParams.set("q", query);
     upstream.searchParams.set("limit", "5");
     upstream.searchParams.set("layer", "address");
+    upstream.searchParams.set(
+      "countrycodes",
+      process.env.NOMINATIM_COUNTRY_CODES || DEFAULT_COUNTRY_CODES,
+    );
   } else {
     const lat = Number(rawLat);
     const lng = Number(rawLng);

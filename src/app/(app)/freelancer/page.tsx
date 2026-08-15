@@ -1,19 +1,27 @@
 "use client";
 
 import { Suspense, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Briefcase, MapPin, Zap } from "lucide-react";
+import { MapPin, Package } from "lucide-react";
 import { EmptyState } from "@/components/feedback/empty-state";
-import { ExploreCategories } from "@/components/explore-categories";
 import { JobCard } from "@/components/job-card";
+import { JobListingFilters } from "@/components/job-listing-filters";
+import { PageHeader } from "@/components/layout/page-header";
 import { PageLoading } from "@/components/page-loading";
 import { SectionHeader } from "@/components/layout/section-header";
 import { LocationSelector } from "@/components/location-selector";
-import { QuickActionCard } from "@/components/shared/quick-action-card";
+import { Badge } from "@/components/ui/badge";
+import { jobCategoryIcons } from "@/features/jobs/components/job-category-icon";
 import { useSessionProfile } from "@/hooks/use-session-profile";
 import { useRouter } from "@/hooks/use-app-router";
+import {
+  countActiveJobFilters,
+  filterJobs,
+  parseJobListingFilters,
+} from "@/lib/job-listing-filters";
 import { createClient } from "@/lib/supabase/client";
-import { haversineKm } from "@/lib/utils";
+import { CATEGORIES, greetingForNow, haversineKm } from "@/lib/utils";
 import type { Job, JobCategory } from "@/types/database";
 
 type NearbyJob = Job & {
@@ -23,23 +31,6 @@ type NearbyJob = Job & {
   } | null;
   distanceKm: number;
 };
-
-type HomeFilter = "nearby" | "new" | "skilled";
-
-const NEW_GIG_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
-
-function parseFilter(value: string | null): HomeFilter {
-  if (value === "new" || value === "skilled" || value === "nearby") return value;
-  return "nearby";
-}
-
-function filterHref(filter: HomeFilter, category: string) {
-  const params = new URLSearchParams();
-  if (category !== "all") params.set("category", category);
-  if (filter !== "nearby") params.set("filter", filter);
-  const qs = params.toString();
-  return qs ? `/freelancer?${qs}` : "/freelancer";
-}
 
 export default function FreelancerHomePage() {
   return (
@@ -53,13 +44,15 @@ function FreelancerHomeContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const category = searchParams.get("category") ?? "all";
-  const filterParam = searchParams.get("filter");
-  const filter = parseFilter(filterParam);
+  const filters = useMemo(
+    () => parseJobListingFilters(searchParams),
+    [searchParams],
+  );
   const { user, profile, loading: sessionLoading } = useSessionProfile();
   const userId = user?.id;
   const profileLat = profile?.lat ?? null;
   const profileLng = profile?.lng ?? null;
-  const profileRadius = profile?.search_radius_km ?? 10;
+  const profileRadius = profile?.search_radius_km ?? null;
   const profileArea = profile?.area ?? null;
   const profileCity = profile?.city ?? null;
   const [nearby, setNearby] = useState<NearbyJob[]>([]);
@@ -68,9 +61,25 @@ function FreelancerHomeContent() {
   const [city, setCity] = useState<string | null>(null);
   const [lat, setLat] = useState<number | null>(null);
   const [lng, setLng] = useState<number | null>(null);
-  const [radius, setRadius] = useState(10);
+  const [radius, setRadius] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [hasLoaded, setHasLoaded] = useState(false);
+  const visibleJobs = useMemo(
+    () => filterJobs(nearby, filters),
+    [nearby, filters],
+  );
+  const activeFilterCount = countActiveJobFilters(filters);
+
+  function categoryHref(value: string) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (value === "all") {
+      params.delete("category");
+    } else {
+      params.set("category", value);
+    }
+    const query = params.toString();
+    return query ? `/freelancer?${query}` : "/freelancer";
+  }
 
   useEffect(() => {
     if (sessionLoading) return;
@@ -116,7 +125,10 @@ function FreelancerHomeContent() {
               ...job,
               distanceKm: haversineKm(profileLat, profileLng, job.lat, job.lng),
             }))
-            .filter((job) => job.distanceKm <= profileRadius)
+            .filter(
+              (job) =>
+                profileRadius == null || job.distanceKm <= profileRadius,
+            )
             .sort((a, b) => a.distanceKm - b.distanceKm)
         : [];
 
@@ -148,77 +160,71 @@ function FreelancerHomeContent() {
     router,
   ]);
 
-  const visibleJobs = useMemo(() => {
-    const now = Date.now();
-    if (filter === "skilled") {
-      return nearby.filter((job) => job.skilled);
-    }
-    if (filter === "new") {
-      return [...nearby]
-        .filter((job) => {
-          const created = new Date(job.created_at).getTime();
-          return !Number.isNaN(created) && now - created <= NEW_GIG_WINDOW_MS;
-        })
-        .sort(
-          (a, b) =>
-            new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-        );
-    }
-    return nearby;
-  }, [nearby, filter]);
-
-  const sectionTitle =
-    filter === "new"
-      ? "New Gigs"
-      : filter === "skilled"
-        ? "Skilled Gigs"
-        : "Gigs Near You";
-
   // Only blank the first paint — keep previous list while category refetches.
   if (sessionLoading || (!hasLoaded && loading)) {
     return <PageLoading />;
   }
 
   return (
-    <div className="space-y-4 px-4 pb-4 pt-2">
-      <LocationSelector
-        area={area}
-        city={city}
-        lat={lat}
-        lng={lng}
-        searchRadiusKm={radius}
-        variant="bar"
+    <div className="space-y-4 px-4 pb-4 pt-1">
+      <PageHeader
+        title={
+          <>
+            {greetingForNow()},{" "}
+            <span className="font-semibold">
+              {(profile?.full_name || "there").split(" ")[0]}
+            </span>{" "}
+            <span aria-hidden>👋</span>
+          </>
+        }
+        description="Find gigs near you and earn on your terms."
+        action={
+          <JobListingFilters filters={filters} searchParams={searchParams} />
+        }
       />
 
-      <ExploreCategories activeCategory={category} />
-
-      <div className="flex gap-2 overflow-x-auto hide-scrollbar">
-        <QuickActionCard
-          href={filterHref("new", category)}
-          title="New Gigs"
-          subtitle="Recently posted"
-          tone="amber"
-          icon={<Zap aria-hidden className="fill-amber-400" />}
-        />
-        <QuickActionCard
-          href={filterHref("skilled", category)}
-          title="Skilled Gigs"
-          subtitle="Top skilled jobs"
-          tone="sky"
-          icon={<Briefcase aria-hidden />}
-        />
-        <QuickActionCard
-          href={filterHref("nearby", category)}
-          title="Nearby Gigs"
-          subtitle="Near you"
-          tone="emerald"
-          icon={<MapPin aria-hidden className="text-sky-500" />}
-        />
+      <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-0.5">
+        {CATEGORIES.map((cat) => {
+          const active = category === cat.value;
+          const Icon =
+            cat.value === "all"
+              ? Package
+              : (jobCategoryIcons[cat.value as JobCategory] ?? Package);
+          return (
+            <Badge
+              key={cat.value}
+              variant={active ? "default" : "outline"}
+              size="sm"
+              className="shrink-0"
+              asChild
+            >
+              <Link href={categoryHref(cat.value)}>
+                <Icon data-icon="inline-start" />
+                {cat.label}
+              </Link>
+            </Badge>
+          );
+        })}
       </div>
 
       <SectionHeader
-        title={sectionTitle}
-        action={{ label: "See all", href: filterHref("nearby", "all") }}
+        title={
+          activeFilterCount > 0
+            ? `${visibleJobs.length} matching ${
+                visibleJobs.length === 1 ? "gig" : "gigs"
+              }`
+            : "Gigs Near You"
+        }
+        action={
+          <LocationSelector
+            area={area}
+            city={city}
+            lat={lat}
+            lng={lng}
+            searchRadiusKm={radius}
+            compact
+          />
+        }
       />
 
       <div className="space-y-3">
@@ -227,22 +233,18 @@ function FreelancerHomeContent() {
             className="rounded-2xl"
             icon={<MapPin aria-hidden="true" className="size-5" />}
             title={
-              !hasUserLocation
-                ? "Set Your Location"
-                : filter === "skilled"
-                  ? "No Skilled Gigs Nearby"
-                  : filter === "new"
-                    ? "No New Gigs Nearby"
-                    : "No Gigs Nearby Yet"
+              activeFilterCount > 0 && nearby.length > 0
+                ? "No Gigs Match"
+                : hasUserLocation
+                  ? "No Gigs Nearby Yet"
+                  : "Set Your Location"
             }
             description={
-              !hasUserLocation
-                ? "Add your location to see gigs within your preferred radius."
-                : filter === "skilled"
-                  ? "Try Nearby Gigs or widen your search radius."
-                  : filter === "new"
-                    ? "Check back soon — or browse all nearby gigs."
-                    : "Tap Change to move the pin or widen your radius."
+              activeFilterCount > 0 && nearby.length > 0
+                ? "Try widening your pay or date range, or clearing a filter."
+                : hasUserLocation
+                ? "Tap your location to move the pin or widen your radius."
+                : "Add your location to see gigs within your preferred radius."
             }
           />
         ) : (
