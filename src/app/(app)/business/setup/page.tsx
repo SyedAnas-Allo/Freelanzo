@@ -10,6 +10,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  SESSION_DRAFT_KEYS,
+  useSessionDraft,
+} from "@/hooks/use-session-draft";
 import { refreshSessionProfile } from "@/hooks/use-session-profile";
 import { isValidGstinFormat, normalizeGstin } from "@/lib/gstin";
 import { setActiveModeCookie } from "@/lib/role-session";
@@ -40,13 +44,16 @@ function BusinessSetupForm() {
   const returnTo = safeReturnTo(searchParams.get("returnTo"));
   const [checking, setChecking] = useState(true);
   const [loading, setLoading] = useState(false);
-  const [form, setForm] = useState({
-    business_name: "",
-    contact_person: "",
-    address: "",
-    description: "",
-    gst_number: "",
-  });
+  const [form, setForm, clearDraft] = useSessionDraft(
+    SESSION_DRAFT_KEYS.businessSetup,
+    {
+      business_name: "",
+      contact_person: "",
+      address: "",
+      description: "",
+      gst_number: "",
+    },
+  );
 
   useEffect(() => {
     async function checkExisting() {
@@ -116,6 +123,7 @@ function BusinessSetupForm() {
       return;
     }
     toast.success("Business profile created");
+    clearDraft();
     // Must refresh shared session before gated routes (e.g. /business/jobs/new)
     // or stale business:null + returnTo ping-pongs forever.
     await refreshSessionProfile();

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useRouter } from "@/hooks/use-app-router";
 import { ChevronLeft, ChevronRight, Plus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
@@ -12,8 +13,15 @@ import { useWorkPhotos } from "@/hooks/use-work-photos";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
-export default function ProfilePhotosPage() {
+function safeReturnTo(value: string | null): string | null {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) return null;
+  return value;
+}
+
+function ProfilePhotosContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const returnTo = safeReturnTo(searchParams.get("returnTo"));
   const fileRef = useRef<HTMLInputElement>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
@@ -82,7 +90,7 @@ export default function ProfilePhotosPage() {
   return (
     <PageContent className="pb-10">
       <PageHeader
-        backHref="/profile"
+        backHref={returnTo ?? "/profile"}
         title="Work Photos"
         description="Tap a photo to preview. Add more to show businesses your work."
         action={
@@ -218,5 +226,13 @@ export default function ProfilePhotosPage() {
         </div>
       ) : null}
     </PageContent>
+  );
+}
+
+export default function ProfilePhotosPage() {
+  return (
+    <Suspense fallback={<PageLoading variant="page" />}>
+      <ProfilePhotosContent />
+    </Suspense>
   );
 }

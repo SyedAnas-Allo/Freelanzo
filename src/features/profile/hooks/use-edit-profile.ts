@@ -1,10 +1,21 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useRouter } from "@/hooks/use-app-router";
-import { toast } from "sonner";
 import { refreshSessionProfile } from "@/hooks/use-session-profile";
+import {
+  ensureOnlineForMutation,
+  flashSuccess,
+  flashValidation,
+  presentAppError,
+} from "@/lib/flash-message";
+import {
+  removeAvatarObject,
+  removeReplacedOwnedAvatar,
+  uploadPublicAvatar,
+  validateAvatarFile,
+} from "@/lib/avatar-upload";
 import {
   defaultLocationValue,
   hasCoordinates,
@@ -25,6 +36,9 @@ export function useEditProfile() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [profileId, setProfileId] = useState<string | null>(null);
+  const [activeMode, setActiveMode] = useState<Profile["active_mode"] | null>(
+    null,
+  );
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
   const [dob, setDob] = useState("");
@@ -34,7 +48,18 @@ export function useEditProfile() {
   const [languages, setLanguages] = useState("");
   const [skills, setSkills] = useState<string[]>([]);
   const [photoUrl, setPhotoUrl] = useState("");
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const photoPreviewUrl = useMemo(
+    () => (photoFile ? URL.createObjectURL(photoFile) : ""),
+    [photoFile],
+  );
   const [location, setLocation] = useState<LocationValue>(defaultLocationValue());
+
+  useEffect(() => {
+    return () => {
+      if (photoPreviewUrl) URL.revokeObjectURL(photoPreviewUrl);
+    };
+  }, [photoPreviewUrl]);
 
   useEffect(() => {
     async function load() {
@@ -54,11 +79,12 @@ export function useEditProfile() {
         .maybeSingle();
       const profile = data as Profile | null;
       if (!profile) {
-        toast.error("Profile not found");
+        presentAppError(new Error("Profile not found"));
         router.push("/profile");
         return;
       }
       setProfileId(profile.id);
+      setActiveMode(profile.active_mode);
       setFullName(profile.full_name || "");
       setPhone((profile.phone || "").replace(/^\+91/, ""));
       setDob(profile.date_of_birth || "");
@@ -67,7 +93,9 @@ export function useEditProfile() {
       setAbout(profile.about || "");
       setLanguages((profile.languages || []).join(", "));
       setSkills(profile.skills || []);
-      setPhotoUrl(profile.photo_url || "");
+      setPhotoUrl(
+        profile.photo_url?.startsWith("data:") ? "" : profile.photo_url || "",
+      );
       setLocation(
         defaultLocationValue({
           area: profile.area ?? undefined,
@@ -84,40 +112,51 @@ export function useEditProfile() {
 
   function pickAvatar(file: File | null) {
     if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      toast.error("Choose an image file");
+    const validationMessage = validateAvatarFile(file);
+    if (validationMessage) {
+      flashValidation(validationMessage);
       return;
     }
-    if (file.size > 2.5 * 1024 * 1024) {
-      toast.error("Keep photo under 2.5 MB");
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") setPhotoUrl(reader.result);
-    };
-    reader.readAsDataURL(file);
+    setPhotoFile(file);
   }
 
   async function save() {
     if (!profileId) return;
     const name = fullName.trim();
     if (!name) {
-      toast.error("Enter your name");
+      flashValidation("Enter your name");
       return;
     }
     const digits = phone.replace(/\D/g, "").slice(-10);
     if (digits.length !== 10) {
-      toast.error("Enter a valid 10-digit mobile number");
+      flashValidation("Enter a valid 10-digit mobile number");
       return;
     }
     if (!hasCoordinates(location)) {
-      toast.error("Choose your current location or search for an area");
+      flashValidation("Choose your current location or search for an area");
       return;
     }
+    if (!ensureOnlineForMutation()) return;
 
     setSaving(true);
     const supabase = createClient();
+    let uploadedPhoto: Awaited<ReturnType<typeof uploadPublicAvatar>> | null =
+      null;
+    try {
+      if (photoFile) {
+        uploadedPhoto = await uploadPublicAvatar({
+          supabase,
+          file: photoFile,
+          ownerId: profileId,
+          kind: "profiles",
+        });
+      }
+    } catch (error) {
+      setSaving(false);
+      presentAppError(error, { op: "upload", onRetry: () => void save() });
+      return;
+    }
+
     const toList = (value: string) =>
       value
         .split(",")
@@ -134,22 +173,33 @@ export function useEditProfile() {
         about: about.trim() || null,
         languages: toList(languages),
         skills,
-        photo_url: photoUrl || null,
+        photo_url: (uploadedPhoto?.publicUrl ?? photoUrl) || null,
         area: location.area,
         city: location.city,
         lat: location.lat,
         lng: location.lng,
-        search_radius_km: location.search_radius_km ?? 10,
+        search_radius_km: location.search_radius_km ?? null,
         onboarding_complete: true,
       })
       .eq("id", profileId);
 
     setSaving(false);
     if (error) {
-      toast.error(error.message);
+      if (uploadedPhoto) {
+        await removeAvatarObject(supabase, uploadedPhoto.path).catch(() => {});
+      }
+      presentAppError(error, { onRetry: () => void save() });
       return;
     }
-    toast.success("Profile updated");
+    if (uploadedPhoto) {
+      await removeReplacedOwnedAvatar({
+        supabase,
+        previousUrl: photoUrl,
+        ownerId: profileId,
+        replacementPath: uploadedPhoto.path,
+      }).catch(() => {});
+    }
+    flashSuccess("Profile updated");
     await refreshSessionProfile();
     router.push(returnTo ?? "/profile");
   }
@@ -157,6 +207,7 @@ export function useEditProfile() {
   return {
     loading,
     saving,
+    activeMode,
     fullName,
     setFullName,
     phone,
@@ -173,7 +224,7 @@ export function useEditProfile() {
     setLanguages,
     skills,
     setSkills,
-    photoUrl,
+    photoUrl: photoPreviewUrl || photoUrl,
     setPhotoUrl,
     location,
     setLocation,

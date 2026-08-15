@@ -1,10 +1,13 @@
 "use client";
 
+import Link from "next/link";
 import { Suspense, useRef, useState } from "react";
 import {
   Briefcase,
   Calendar,
   Camera,
+  ChevronRight,
+  Images,
   Languages,
   MapPin,
   Phone,
@@ -18,6 +21,7 @@ import { TagListInput } from "@/components/forms/tag-list-input";
 import { PageContent } from "@/components/layout/page-content";
 import { PageHeader } from "@/components/layout/page-header";
 import { PageLoading } from "@/components/page-loading";
+import { formatSearchRadius } from "@/lib/locations";
 import { LocationPickerLazy } from "@/components/location-picker-lazy";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -31,9 +35,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useEditProfile } from "@/features/profile/hooks/use-edit-profile";
-import { dicebearAvatarUrl } from "@/lib/avatar";
 import type { GenderType, WorkType } from "@/types/database";
-import { toast } from "sonner";
 
 function EditProfileForm() {
   const fileRef = useRef<HTMLInputElement>(null);
@@ -41,6 +43,7 @@ function EditProfileForm() {
   const {
     loading,
     saving,
+    activeMode,
     fullName,
     setFullName,
     phone,
@@ -58,7 +61,6 @@ function EditProfileForm() {
     skills,
     setSkills,
     photoUrl,
-    setPhotoUrl,
     location,
     setLocation,
     pickAvatar,
@@ -102,26 +104,32 @@ function EditProfileForm() {
             onChange={(e) => pickAvatar(e.target.files?.[0] ?? null)}
           />
         </div>
-        <div className="flex gap-3">
-          <button
-            type="button"
-            className="text-xs font-bold text-primary"
-            onClick={() => fileRef.current?.click()}
-          >
-            Change photo
-          </button>
-          <button
-            type="button"
-            className="text-xs font-bold text-muted-foreground"
-            onClick={() => {
-              setPhotoUrl(dicebearAvatarUrl(fullName || "Freelanzo"));
-              toast.success("Avatar applied — tap Save changes");
-            }}
-          >
-            Use avatar
-          </button>
-        </div>
+        <button
+          type="button"
+          className="text-xs font-bold text-primary"
+          onClick={() => fileRef.current?.click()}
+        >
+          {photoUrl ? "Change photo" : "Add photo"}
+        </button>
       </div>
+
+      {activeMode === "freelancer" ? (
+        <Link
+          href="/profile/photos?returnTo=%2Fprofile%2Fedit"
+          className="mb-4 flex items-center gap-3 rounded-2xl border border-border/70 bg-card px-3.5 py-3.5 shadow-sm transition-colors hover:border-primary/30"
+        >
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/8 text-primary">
+            <Images className="size-4" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-bold">Profile Photos</span>
+            <span className="block text-xs font-medium text-muted-foreground">
+              Optional · Add and manage photos of your work
+            </span>
+          </span>
+          <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+        </Link>
+      ) : null}
 
       <FormGroup>
         <FormField icon={UserRound} label="Full Name">
@@ -231,7 +239,7 @@ function EditProfileForm() {
                   {location.lat !== null && location.lng !== null ? (
                     <span className="font-medium text-muted-foreground">
                       {" "}
-                      · {location.search_radius_km ?? 10} km
+                      · {formatSearchRadius(location.search_radius_km)}
                     </span>
                   ) : null}
                 </p>
