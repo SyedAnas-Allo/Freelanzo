@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { AppHeader } from "@/components/app-header";
+import { AppScrollPort } from "@/components/app-scroll-port";
 import { BottomNav } from "@/components/bottom-nav";
 import { PullToRefresh } from "@/components/pull-to-refresh";
 import { useRouter } from "@/hooks/use-app-router";
@@ -38,6 +39,15 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
   // Chat has its own in-page header; keep AppHeader off so the thread fills the screen.
   const hideHeader = /^\/messages\/[^/]+$/.test(pathname);
   const pullRefreshRef = useRef<() => Promise<void>>(async () => undefined);
+
+  useEffect(() => {
+    document.documentElement.classList.add("app-scroll-lock");
+    document.body.classList.add("app-scroll-lock");
+    return () => {
+      document.documentElement.classList.remove("app-scroll-lock");
+      document.body.classList.remove("app-scroll-lock");
+    };
+  }, []);
 
   useEffect(() => {
     // Re-read on navigation so role switches apply; cookie hit avoids a DB round-trip.
@@ -100,7 +110,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
   }, [onPullRefresh]);
 
   return (
-    <div className="flex min-h-dvh flex-col">
+    <div className="flex h-dvh max-h-dvh flex-col overflow-hidden">
       {!hideHeader ? (
         <AppHeader
           unreadCount={unreadCount}
@@ -112,16 +122,18 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
         disabled={!isOnline || hideHeader}
         className="flex min-h-0 flex-1 flex-col"
       >
-        <main
-          key={`${pathname}:${contentKey}`}
-          className={cn(
-            "app-route-enter flex-1",
-            hideHeader && "flex min-h-0 flex-col",
-            !hideNav && "safe-bottom",
-          )}
-        >
-          {children}
-        </main>
+        <AppScrollPort disabled={hideHeader} resetKey={`${pathname}:${contentKey}`}>
+          <main
+            key={`${pathname}:${contentKey}`}
+            className={cn(
+              "app-route-enter",
+              hideHeader ? "flex min-h-0 flex-1 flex-col" : "min-h-full",
+              !hideNav && "safe-bottom",
+            )}
+          >
+            {children}
+          </main>
+        </AppScrollPort>
       </PullToRefresh>
       {!hideNav ? (
         <BottomNav mode={mode} messageUnreadCount={messageUnreadCount} />

@@ -179,6 +179,35 @@
   box-shadow: 0 0 0 1px color-mix(in oklch, var(--primary) 10%, transparent);
 }
 
+/* Locked document scroll while AppShell owns a contained scrollport. */
+html.app-scroll-lock,
+html.app-scroll-lock body {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+html.app-scroll-lock .app-shell {
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
+}
+
+.app-scrollport {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  scrollbar-width: none;
+  scroll-behavior: auto;
+}
+
+.app-scrollport::-webkit-scrollbar {
+  display: none;
+}
+
+html[data-native-app="true"] .app-scrollport {
+  overscroll-behavior: none;
+}
+
 /* WebView-only polish: keep custom pull-to-refresh, remove browser chrome. */
 html[data-native-app="true"] {
   overscroll-behavior: none;

@@ -367,7 +367,7 @@ export function JobChatRoom({
         </Button>
       </div>
 
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-4 py-4" data-lenis-prevent>
         {messages.length === 0 ? (
           <p className="px-2 py-8 text-center text-sm font-light text-muted-foreground">
             Gig group chat for {chat.business_name}. Messages are visible to the

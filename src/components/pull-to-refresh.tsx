@@ -13,11 +13,24 @@ const THRESHOLD = 72;
 const MAX_PULL = 120;
 const RESISTANCE = 0.48;
 
+function getAppScrollPort(): HTMLElement | null {
+  return document.querySelector<HTMLElement>("[data-app-scroll]");
+}
+
+function isAtScrollTop(): boolean {
+  const port = getAppScrollPort();
+  if (port) return port.scrollTop <= 0;
+  return window.scrollY <= 0 && document.documentElement.scrollTop <= 0;
+}
+
 function canPullFrom(target: EventTarget | null): boolean {
   if (!(target instanceof Element)) return true;
   let node: Element | null = target;
   while (node && node !== document.body) {
     if (node instanceof HTMLElement) {
+      if (node.hasAttribute("data-app-scroll")) {
+        return node.scrollTop <= 0;
+      }
       const style = window.getComputedStyle(node);
       const oy = style.overflowY;
       const scrollable =
@@ -35,7 +48,7 @@ function canPullFrom(target: EventTarget | null): boolean {
     }
     node = node.parentElement;
   }
-  return window.scrollY <= 0 && document.documentElement.scrollTop <= 0;
+  return isAtScrollTop();
 }
 
 function PullIndicator({
@@ -104,7 +117,7 @@ function PullIndicator({
 
 /**
  * Touch pull-to-refresh for the app shell (WebView + mobile browsers).
- * At top of page only; skips nested scrollers, maps, and dialogs.
+ * At top of the app scrollport only; skips nested scrollers, maps, and dialogs.
  */
 export function PullToRefresh({
   children,
@@ -219,9 +232,10 @@ export function PullToRefresh({
   const shift = refreshing ? Math.max(pull, 56) : pull;
 
   return (
-    <div className={cn("relative", className)}>
+    <div className={cn("relative flex min-h-0 flex-1 flex-col", className)}>
       <PullIndicator pull={shift} refreshing={refreshing} />
       <div
+        className="flex min-h-0 flex-1 flex-col"
         style={{
           transform: shift > 0 ? `translate3d(0, ${shift}px, 0)` : undefined,
           transition:
