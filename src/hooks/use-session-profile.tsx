@@ -44,10 +44,11 @@ function publishSessionProfile(data: SessionProfile) {
   listeners.forEach((listener) => listener(data));
 }
 
-/** Clear cache only (e.g. logout). Does not refetch or notify. */
+/** Clear cache and notify listeners (e.g. logout). */
 export function invalidateSessionProfile() {
   memoryCache = null;
   inflight = null;
+  publishSessionProfile({ user: null, profile: null, business: null });
 }
 
 /**

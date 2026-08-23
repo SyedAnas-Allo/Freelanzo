@@ -15,6 +15,9 @@ export function isNativeWebView(): boolean {
   return Boolean(w.__FREELANZO_NATIVE__ || w.ReactNativeWebView);
 }
 
+/** Storage key for the native WebView PKCE client (localStorage). */
+export const NATIVE_AUTH_STORAGE_KEY = "freelanzo-native-auth";
+
 /**
  * PKCE via localStorage — cookies often vanish when Android Custom Tabs /
  * iOS SFSafariViewController background the WebView mid-OAuth.
@@ -25,7 +28,7 @@ export function createNativePkceClient() {
       flowType: "pkce",
       detectSessionInUrl: false,
       persistSession: true,
-      storageKey: "freelanzo-native-auth",
+      storageKey: NATIVE_AUTH_STORAGE_KEY,
       storage: {
         getItem: (key) =>
           typeof window === "undefined"
@@ -260,4 +263,45 @@ export function readNativeHandoffParams(): {
     accessToken: params.get("access_token"),
     refreshToken: params.get("refresh_token"),
   };
+}
+
+function clearNativeAuthStorage() {
+  if (typeof window === "undefined") return;
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const key = window.localStorage.key(i);
+      if (key && key.startsWith(NATIVE_AUTH_STORAGE_KEY)) keys.push(key);
+    }
+    for (const key of keys) window.localStorage.removeItem(key);
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Sign out of both the cookie SSR client and the native PKCE localStorage
+ * client. Soft cookie-only signOut left the app logged in on reopen.
+ */
+export async function signOutEverywhere(): Promise<void> {
+  // Wipe native store first so recoverNativeSession cannot revive the session.
+  if (typeof window !== "undefined") {
+    try {
+      await createNativePkceClient().auth.signOut({ scope: "local" });
+    } catch {
+      // ignore
+    }
+    clearNativeAuthStorage();
+  }
+
+  const browser = createClient();
+  try {
+    await browser.auth.signOut({ scope: "global" });
+  } catch {
+    try {
+      await browser.auth.signOut({ scope: "local" });
+    } catch {
+      // offline / already cleared
+    }
+  }
 }

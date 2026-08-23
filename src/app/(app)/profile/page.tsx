@@ -37,6 +37,7 @@ import {
 import { clearRoleReadyCookie } from "@/lib/role-session";
 import { shareOrCopy, SITE_URL } from "@/lib/share";
 import { createClient } from "@/lib/supabase/client";
+import { signOutEverywhere } from "@/lib/supabase/native-auth";
 import {
   invalidateSessionProfile,
   useSessionProfile,
@@ -126,11 +127,11 @@ export default function ProfilePage() {
   ]);
 
   async function logout() {
-    const supabase = createClient();
     clearRoleReadyCookie();
     invalidateSessionProfile();
-    await supabase.auth.signOut();
-    router.push("/login");
+    await signOutEverywhere();
+    // Full reload so middleware sees cleared cookies (soft push kept the session).
+    window.location.replace("/login");
   }
 
   async function referFreelanzo() {
