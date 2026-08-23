@@ -113,6 +113,28 @@ export function sessionDeepLinkToWebUrl(url: string): string | null {
   }
 }
 
+/** True when both handoff URLs carry the same OAuth code (or token pair). */
+export function isSameAuthHandoff(
+  a: string | null | undefined,
+  b: string | null | undefined,
+): boolean {
+  if (!a || !b) return false;
+  if (a === b) return true;
+  try {
+    const left = new URL(a);
+    const right = new URL(b);
+    const codeA = left.searchParams.get("code");
+    const codeB = right.searchParams.get("code");
+    if (codeA && codeB) return codeA === codeB;
+    const atA = left.searchParams.get("access_token");
+    const atB = right.searchParams.get("access_token");
+    if (atA && atB) return atA === atB;
+  } catch {
+    // ignore
+  }
+  return false;
+}
+
 export function codeUrlToWebsiteCallback(url: string): string | null {
   try {
     if (!/^https?:/i.test(url)) return null;

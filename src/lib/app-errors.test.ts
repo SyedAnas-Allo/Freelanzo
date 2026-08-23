@@ -109,6 +109,24 @@ describe("classifyAppError", () => {
     assert.equal(camera.category, "device");
   });
 
+  it("does not treat PKCE auth storage errors as file uploads", () => {
+    const pkce = classifyAppError(
+      new Error(
+        "PKCE code verifier not found in storage. This can happen if the auth flow was initiated in a different browser or device, or if the storage was cleared.",
+      ),
+    );
+    assert.equal(pkce.category, "auth");
+    assert.match(pkce.message, /sign-in/i);
+    assert.doesNotMatch(pkce.message, /upload/i);
+
+    const coded = classifyAppError({
+      message: "PKCE code verifier not found in storage",
+      code: "pkce_code_verifier_not_found",
+    });
+    assert.equal(coded.category, "auth");
+    assert.equal(coded.retryable, true);
+  });
+
   it("never surfaces raw Postgres exception text", () => {
     const raw = classifyAppError(
       new Error(

@@ -30,7 +30,17 @@ export default function NativeAuthPage() {
       if (code) {
         const { error: exchangeError } = await completeNativeOAuth(code);
         if (cancelled) return;
+
         if (exchangeError) {
+          // Duplicate handoff: first attempt may have already mirrored cookies.
+          const browser = createClient();
+          const { data } = await browser.auth.getSession();
+          if (cancelled) return;
+          if (data.session) {
+            clearRoleReadyCookie();
+            router.replace("/continue");
+            return;
+          }
           setError(classifyAppError(exchangeError).message);
           return;
         }

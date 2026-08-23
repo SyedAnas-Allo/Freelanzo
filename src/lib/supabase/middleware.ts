@@ -2,6 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import {
   ACTIVE_MODE_COOKIE,
+  ROLE_COOKIE_MAX_AGE_SECONDS,
   ROLE_READY_COOKIE,
   type SessionMode,
 } from "@/lib/role-session";
@@ -10,6 +11,14 @@ import { getSupabasePublishableKey, getSupabaseUrl } from "@/lib/supabase/env";
 function readModeCookie(request: NextRequest): SessionMode | null {
   const value = request.cookies.get(ACTIVE_MODE_COOKIE)?.value;
   return value === "business" || value === "freelancer" ? value : null;
+}
+
+function roleCookieOptions() {
+  return {
+    path: "/",
+    sameSite: "lax" as const,
+    maxAge: ROLE_COOKIE_MAX_AGE_SECONDS,
+  };
 }
 
 export async function updateSession(request: NextRequest) {
@@ -95,10 +104,7 @@ export async function updateSession(request: NextRequest) {
 
     // Keep the mode cookie warm when we already paid for the query.
     if (roleReady && modeCookie !== activeMode) {
-      supabaseResponse.cookies.set(ACTIVE_MODE_COOKIE, activeMode, {
-        path: "/",
-        sameSite: "lax",
-      });
+      supabaseResponse.cookies.set(ACTIVE_MODE_COOKIE, activeMode, roleCookieOptions());
     }
   }
 

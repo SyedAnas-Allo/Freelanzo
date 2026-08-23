@@ -216,15 +216,33 @@ function looksLikeRateLimit(
   );
 }
 
-function looksLikeStorage(message: string, op?: string): boolean {
+function looksLikePkceOrAuthStorage(message: string, code: string): boolean {
   const lower = message.toLowerCase();
   return (
-    op === "storage" ||
-    op === "upload" ||
-    lower.includes("storage") ||
+    code === "pkce_code_verifier_not_found" ||
+    lower.includes("pkce") ||
+    lower.includes("code verifier") ||
+    lower.includes("auth code and code verifier")
+  );
+}
+
+function looksLikeStorage(message: string, op?: string): boolean {
+  if (op === "storage" || op === "upload") return true;
+  // Supabase PKCE errors say "not found in storage" — that is auth, not file upload.
+  if (looksLikePkceOrAuthStorage(message, "")) return false;
+  const lower = message.toLowerCase();
+  return (
     lower.includes("upload") ||
     lower.includes("object not found") ||
-    lower.includes("bucket")
+    lower.includes("bucket") ||
+    // File/object storage only — avoid bare "storage" (matches PKCE copy).
+    lower.includes("storage.object") ||
+    lower.includes("storage api") ||
+    (lower.includes("storage") &&
+      (lower.includes("bucket") ||
+        lower.includes("object") ||
+        lower.includes("upload") ||
+        lower.includes("file")))
   );
 }
 
@@ -347,11 +365,16 @@ export function classifyAppError(
     };
   }
 
-  if (looksLikeAuth(message, code, status)) {
+  if (
+    looksLikeAuth(message, code, status) ||
+    looksLikePkceOrAuthStorage(message, code)
+  ) {
     return {
       category: "auth",
-      message: DEFAULT_MESSAGES.auth,
-      retryable: false,
+      message: looksLikePkceOrAuthStorage(message, code)
+        ? "Sign-in didn’t finish. Please try again."
+        : DEFAULT_MESSAGES.auth,
+      retryable: looksLikePkceOrAuthStorage(message, code),
       action: AUTH_ACTION,
       raw: message || undefined,
     };

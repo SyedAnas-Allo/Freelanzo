@@ -28,6 +28,7 @@ import { SplashScreen } from "./src/SplashScreen";
 import {
   getAppReturnDeepLink,
   isGoogleUrl,
+  isSameAuthHandoff,
   isSupabaseAuthorizeUrl,
   openOAuthInSystemBrowser,
   sessionDeepLinkToWebUrl,
@@ -286,7 +287,10 @@ export default function App() {
     try {
       const next = sessionDeepLinkToWebUrl(rawUrl);
       if (!next) return false;
-      if (handledAuthUrl.current === next) return true;
+      // Dedupe by OAuth code. AuthSession + Linking often deliver the same
+      // return with different raw strings; loading /auth/native twice
+      // consumes the PKCE verifier on the first pass.
+      if (isSameAuthHandoff(handledAuthUrl.current, next)) return true;
       handledAuthUrl.current = next;
       oauthLock.current = false;
       // Keep the current page visible; only a thin progress bar.
@@ -308,7 +312,9 @@ export default function App() {
       handledAuthUrl.current = null;
       try {
         const next = await openOAuthInSystemBrowser(oauthUrl);
-        if (next && handledAuthUrl.current !== next) {
+        // Linking may have already applied the same handoff while the
+        // browser session was closing — do not reload /auth/native again.
+        if (next && !isSameAuthHandoff(handledAuthUrl.current, next)) {
           handledAuthUrl.current = next;
           dismissSplash();
           setUri(next);
