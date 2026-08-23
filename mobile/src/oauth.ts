@@ -57,7 +57,16 @@ function parseDeepLinkParams(url: string): URLSearchParams | null {
     const normalized = url
       .replace(/^freelanzo:/i, "https:")
       .replace(/^exp[s]?:/i, "https:");
-    return new URL(normalized).searchParams;
+    const parsed = new URL(normalized);
+    const params = new URLSearchParams(parsed.search);
+    // Some providers return tokens in the hash.
+    if (parsed.hash && parsed.hash.length > 1) {
+      const hash = new URLSearchParams(parsed.hash.replace(/^#/, ""));
+      hash.forEach((value, key) => {
+        if (!params.has(key)) params.set(key, value);
+      });
+    }
+    return params;
   } catch {
     try {
       const parsed = Linking.parse(url);
@@ -169,6 +178,8 @@ export async function openOAuthInSystemBrowser(
         codeUrlToWebsiteCallback(result.url)
       );
     }
+    // Dismiss/cancel: Linking may still have delivered the deep link.
+    return null;
   } catch (e) {
     console.warn("openAuthSessionAsync failed", e);
   }
